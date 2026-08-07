@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_API_BASE_URL: /api
+    env_file:
+      - apps/api/.env
+    ports:
+      # Host port defaults to 85; override with HOST_PORT=86 if you ever
+      # need a second one running alongside it. Container-side stays on the
+      # app's normal PORT (4000, from apps/api/.env) — no need to bind a
+      # privileged port inside the container.
+      - '${HOST_PORT:-85}:4000'
+    restart: unless-stopped

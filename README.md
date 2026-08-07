@@ -54,14 +54,14 @@
 
 ## 🌟 About
 
-**Dexplorer** is a disposable, lightweight blockchain explorer specifically designed for Cosmos-based blockchains. Unlike traditional explorers that require backend infrastructure and databases, Dexplorer operates entirely as a frontend application, connecting directly to any Cosmos SDK chain using only WebSocket RPC connections.
+**Dexplorer** is a lightweight blockchain explorer for Cosmos-based blockchains. It's a pnpm monorepo with two parts: a **backend indexer** (`apps/api`) that walks a chain from genesis via Tendermint RPC and persists everything to MongoDB, and a **frontend** (`apps/web`) that reads from the backend's REST API — so data survives page reloads and history isn't limited to the last few in-memory blocks.
 
 This makes it perfect for:
 
 - 🔧 **Development**: Quick exploration during chain development
 - 🧪 **Testing**: Instant setup for testnets and local chains
 - 📊 **Monitoring**: Real-time blockchain data visualization
-- 🚀 **Deployment**: Zero backend infrastructure required
+- 🗄️ **Historical data**: Full chain history persisted in MongoDB, not lost on reload
 
 ## 🎬 Demo
 
@@ -97,7 +97,7 @@ _Connect to any Cosmos RPC endpoint and start exploring!_
 - 🎨 **Modern UI**: Clean, intuitive interface with dark/light themes and smooth animations
 - ♿ **Accessible**: WCAG 2.1 AA compliant — keyboard navigable, screen-reader friendly, respects reduced motion
 - 🌍 **i18n Ready**: Built on i18next, currently shipping English
-- ⚡ **Zero Backend**: No database or server infrastructure needed
+- 🗄️ **Persistent**: Backend indexer + MongoDB — data survives reloads and goes back to genesis
 
 ## 🛠️ Tech Stack
 
@@ -110,16 +110,16 @@ _Connect to any Cosmos RPC endpoint and start exploring!_
 
 ### State & Data Management
 
-- **Redux Toolkit** - Global application state
-- **Zustand** - Lightweight state management
-- **TanStack Query** - Server state management and caching
+- **TanStack Query** - Fetches from the backend REST API, powers polling for "live" views
 - **React Router** - Client-side routing
 
-### Blockchain Integration
+### Backend (`apps/api`)
 
+- **Fastify** - REST API server
+- **MongoDB** (native driver + Zod schemas) - Persists blocks, transactions, validators, proposals, params
 - **CosmJS** - Cosmos SDK JavaScript library (@cosmjs/stargate, @cosmjs/tendermint-rpc)
-- **WebSocket RPC** - Real-time blockchain data streaming
-- **Protobuf** - Message encoding/decoding
+- **WebSocket RPC** - The indexer's connection to the chain (backfill + live tail)
+- **Protobuf** - Message encoding/decoding, extensible via `packages/shared/src/encoding/msg.ts`
 
 ### UI Components & UX
 
@@ -143,6 +143,8 @@ Before running Dexplorer, ensure you have:
 - **Node.js** (v22.0.0 or higher)
 - **pnpm** (v8.0.0 or higher) - _Recommended package manager_
 - **Git** - For cloning the repository
+- **MongoDB** - A connection string (local, Docker, or [Atlas](https://www.mongodb.com/cloud/atlas)) for the backend to index into
+- **A Cosmos SDK chain RPC endpoint** - Tendermint/CometBFT RPC (e.g. `https://rpc.cosmos.nodestake.org`) for the backend to index from
 
 ## 🚀 Installation
 
@@ -151,127 +153,94 @@ Before running Dexplorer, ensure you have:
 ```bash
 # Clone the repository
 git clone https://github.com/arifintahu/dexplorer.git
-
-# Navigate to project directory
 cd dexplorer
 
-# Install dependencies
+# Install dependencies (installs all three workspaces)
 pnpm install
 
-# Start development server
-pnpm dev
+# Configure the backend: copy the template and fill in real values
+cp apps/api/.env.example apps/api/.env
+# edit apps/api/.env — set MONGODB_URI (a MongoDB/Atlas connection string)
+# and RPC_ADDRESS (the chain's Tendermint/CometBFT RPC endpoint)
+
+# Start the backend (indexes the chain into MongoDB, serves the REST API)
+pnpm dev:api
+
+# In a second terminal, start the frontend
+pnpm dev:web
 ```
 
-### Alternative Installation Methods
-
-#### Using npm
-
-```bash
-npm install
-npm run dev
-```
-
-#### Using yarn
-
-```bash
-yarn install
-yarn dev
-```
+Open [http://localhost:5173](http://localhost:5173) — the frontend talks to the API at `http://localhost:4000` by default (proxied in dev via `apps/web/vite.config.ts`; configurable via `VITE_API_BASE_URL`, see `apps/web/.env.example`).
 
 ### Production Build
 
 ```bash
-# Build for production
+# Build every workspace
 pnpm build
 
-# Preview production build
-pnpm preview
+# Or a single one
+pnpm --filter @dexplorer/web build
+pnpm --filter @dexplorer/api build   # type-check only — apps/api runs via tsx, no bundling step
 ```
 
 ### Running Tests
 
 ```bash
-# Run unit tests
-pnpm test
-
-# Run type check
-pnpm check
+pnpm test    # all workspaces
+pnpm check   # type check, all workspaces
 ```
 
 ## ⚙️ Configuration
 
-### Bypass Mode (Auto-Connect)
+Both apps are configured via env files (never commit real secrets — `.env` is gitignored, `.env.example` holds placeholders only):
 
-Dexplorer can be configured to automatically connect to a specific blockchain RPC endpoint, bypassing the connection screen. This is useful for deployments targeting a specific chain.
+**`apps/api/.env`** (backend — owns the chain connection):
 
-Set the following environment variables:
+- `MONGODB_URI` — MongoDB connection string (indexed data lives here)
+- `RPC_ADDRESS` — the chain's Tendermint/CometBFT RPC endpoint (backfilled from genesis, then live-tailed)
+- `CHAIN_NAME` — optional display name
+- `PORT` — API port (default `4000`)
+- `BACKFILL_BATCH_SIZE` / `BACKFILL_CONCURRENCY` — backfill tuning
+- `VALIDATOR_REFRESH_INTERVAL_MS` / `PARAMS_REFRESH_INTERVAL_MS` / `PROPOSAL_REFRESH_INTERVAL_MS` — how often low-churn data is re-polled
 
-- `RPC_ADDRESS`: The WebSocket RPC endpoint URL (e.g., `https://rpc.cosmos.nodestake.org`)
-- `CHAIN_NAME`: (Optional) Display name for the chain
+**`apps/web/.env`**:
 
-**Example usage:**
-
-```bash
-# Run with bypass mode
-RPC_ADDRESS="https://rpc.cosmos.nodestake.org" CHAIN_NAME="Cosmos Hub" pnpm dev
-```
-
-When these variables are set:
-
-1. The application will automatically connect to the specified `RPC_ADDRESS`.
-2. The connection screen will be skipped.
-3. The "Connect" and "Disconnect" buttons in the navigation bar will be hidden.
-4. The `CHAIN_NAME` (if provided) will be displayed in the navigation bar.
+- `VITE_API_BASE_URL` — where the frontend finds the backend (default `http://localhost:4000/api`)
 
 ## 📖 Usage
 
-### Basic Usage
-
-1. **Start the Application**
-
-   ```bash
-   pnpm dev
-   ```
-
-   Open [http://localhost:5173](http://localhost:5173) in your browser
-
-2. **Connect to a Blockchain**
-   - Enter a Cosmos RPC endpoint (e.g., `https://rpc.cosmos.nodestake.org`)
-   - Click "Connect" to establish connection
-
-3. **Explore the Blockchain**
-   - View the dashboard for chain overview
-   - Search for specific blocks, transactions, or accounts
-   - Browse validators and governance proposals
+1. **Start the backend** (`pnpm dev:api`) — watch the logs; it backfills from `indexerState.lastIndexedHeight` (0 on first run) to the chain's current head, then switches to live-tailing new blocks.
+2. **Start the frontend** (`pnpm dev:web`), open [http://localhost:5173](http://localhost:5173).
+3. **Explore the blockchain** — dashboard overview, search for blocks/transactions/accounts, browse validators and governance proposals. All data comes from MongoDB via the REST API, so a reload doesn't lose anything.
 
 ## 📁 Project Structure
 
 ```
-dexplorer/
-├── public/                 # Static assets
-├── src/
-│   ├── assets/             # Images and global styles
-│   ├── components/         # UI Components
-│   │   ├── AccountDetail/  # Account-related components
-│   │   ├── Connect/        # Connection screen components
-│   │   ├── Home/           # Dashboard components
-│   │   ├── Layout/         # App layout (Sidebar, TopNavigation)
-│   │   ├── ProposalDetail/ # Governance proposal components
-│   │   └── ui/             # Generic UI primitives (Button, CopyText, etc.)
-│   ├── encoding/           # Protobuf/Amino encoding utilities
-│   ├── hooks/              # Custom React hooks (useBlock, useTx, etc.)
-│   ├── lib/                # Shared libraries and utilities
-│   ├── locales/            # i18n translation files
-│   ├── pages/              # Route page components
-│   ├── rpc/                # RPC client management
-│   ├── store/              # Redux & Zustand stores
-│   ├── theme/              # Theme configuration (colors, providers)
-│   ├── utils/              # Helper functions
-│   └── main.tsx            # Application entry point
-├── package.json            # Dependencies and scripts
-├── tailwind.config.js      # Tailwind CSS configuration
-├── tsconfig.json           # TypeScript configuration
-└── vite.config.ts          # Vite configuration
+dexplorer/                      # pnpm workspace root
+├── apps/
+│   ├── api/                    # @dexplorer/api — Fastify + MongoDB indexer/REST backend
+│   │   └── src/
+│   │       ├── chain/          # Tendermint RPC client/queries/subscriptions
+│   │       ├── db/             # Mongo connection, Zod schemas, indexes, seed data
+│   │       ├── indexer/        # Backfill, live tail, checkpoint, refreshers
+│   │       ├── routes/         # REST endpoints (one file per resource)
+│   │       └── plugins/        # Fastify plugins (CORS, error handling)
+│   └── web/                    # @dexplorer/web — the React/Vite frontend
+│       ├── public/             # Static assets
+│       └── src/
+│           ├── components/     # UI Components (AccountDetail, Home, Layout, ProposalDetail, ui)
+│           ├── hooks/          # Data-fetching hooks (useHomeData, useAccountData, etc.)
+│           ├── lib/            # apiClient and other shared libs
+│           ├── locales/        # i18n translation files
+│           ├── pages/          # Route page components
+│           ├── theme/          # Theme configuration (colors, providers)
+│           ├── utils/          # Display/formatting helpers
+│           └── main.tsx        # Application entry point
+├── packages/
+│   └── shared/                 # @dexplorer/shared — code identical on both sides:
+│       └── src/                #   message-type decoding registry, denom utils, API response types
+├── pnpm-workspace.yaml
+└── eslint.config.js             # Single root config, scoped per workspace by file glob
 ```
 
 ## 🤝 Contributing

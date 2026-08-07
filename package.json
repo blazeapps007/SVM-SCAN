@@ -6,19 +6,13 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "pnpm": {
-    "overrides": {
-      "bn.js": "5.2.4",
-      "mdast-util-to-hast": "13.2.1"
-    }
-  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "test": "vitest",
-    "preview": "vite preview",
-    "check": "tsc -b --noEmit",
+    "dev:web": "pnpm --filter @dexplorer/web dev",
+    "dev:api": "pnpm --filter @dexplorer/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "check": "pnpm -r check",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -30,58 +24,15 @@
       "prettier --write"
     ]
   },
-  "dependencies": {
-    "@cosmjs/crypto": "^0.34.0",
-    "@cosmjs/encoding": "^0.34.0",
-    "@cosmjs/socket": "^0.34.0",
-    "@cosmjs/stargate": "^0.34.0",
-    "@cosmjs/tendermint-rpc": "^0.34.0",
-    "@reduxjs/toolkit": "^2.8.2",
-    "@tanstack/react-query": "^5.90.21",
-    "bech32": "^2.0.0",
-    "clsx": "^2.1.1",
-    "cosmjs-types": "^0.9.0",
-    "dayjs": "^1.11.13",
-    "framer-motion": "^12.23.9",
-    "i18next": "^25.8.14",
-    "i18next-browser-languagedetector": "^8.2.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-i18next": "^16.5.6",
-    "react-icons": "^5.5.0",
-    "react-markdown": "^10.1.0",
-    "react-redux": "^9.2.0",
-    "react-router-dom": "^7.18.0",
-    "sonner": "^2.0.2",
-    "tailwind-merge": "^3.0.2",
-    "xstream": "^11.14.0",
-    "zustand": "^5.0.3"
-  },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^22.15.30",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^6.0.3",
-    "autoprefixer": "^10.4.21",
-    "babel-plugin-react-dev-locator": "^1.0.0",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
     "husky": "^9.1.7",
-    "jsdom": "^29.1.1",
     "lint-staged": "^16.3.2",
-    "postcss": "^8.5.3",
     "prettier": "^3.8.1",
-    "tailwindcss": "^3.4.17",
-    "typescript": "~5.8.3",
-    "typescript-eslint": "^8.30.1",
-    "vite": "^8.1.0",
-    "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.9"
+    "typescript-eslint": "^8.30.1"
   }
 }

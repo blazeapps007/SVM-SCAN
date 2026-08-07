@@ -1,0 +1,216 @@
+import type { DecodeMsg } from '../encoding/msg'
+
+export interface Paginated<T> {
+  data: T[]
+  pagination: {
+    page: number
+    perPage: number
+    total: number
+  }
+}
+
+export interface Coin {
+  denom: string
+  amount: string
+}
+
+export interface EventAttribute {
+  key: string
+  value: string
+  index?: boolean
+}
+
+export interface TxEventDoc {
+  type: string
+  attributes: EventAttribute[]
+}
+
+export interface IBCTransferFields {
+  sender: string
+  receiver: string
+  sourceChannel: string
+  sourcePort: string
+  destinationChannel: string
+  destinationPort: string
+  amount: string
+  denom: string
+  memo: string
+}
+
+export interface BlockSummary {
+  height: number
+  hash: string
+  time: string
+  proposerAddress: string
+  appHash: string
+  txCount: number
+}
+
+export interface BlockDetailResponse extends BlockSummary {
+  txHashes: string[]
+}
+
+export interface TransactionSummary {
+  hash: string
+  height: number
+  timestamp: string
+  code: number
+  success: boolean
+  messageTypes: string[]
+  fee: Coin[]
+  gasUsed: string
+  gasWanted: string
+}
+
+export interface TransactionDetailResponse extends TransactionSummary {
+  log: string
+  memo: string
+  chainId: string
+  messages: DecodeMsg[]
+  events: TxEventDoc[]
+  senders: string[]
+  ibcTransfer: IBCTransferFields | null
+}
+
+export interface ValidatorSummary {
+  operatorAddress: string
+  moniker: string
+  identity: string
+  status: string
+  tokens: string
+  bondDenom: string
+  commissionRate: string
+  votingPowerPercent: number
+}
+
+export interface ValidatorUptime {
+  missedBlocksCounter: string
+  signedBlocksWindow: string
+}
+
+export interface ValidatorDetailResponse extends ValidatorSummary {
+  website: string
+  details: string
+  delegatorShares: string
+  minSelfDelegation: string
+  unbondingHeight: string
+  consensusPubkey: string | null
+  uptime: ValidatorUptime | null
+}
+
+export interface ValidatorStats {
+  activeCount: number
+  totalCount: number
+  avgCommission: number
+}
+
+export interface ProposalSummary {
+  id: number
+  title: string
+  status: string
+  votingStartTime: string | null
+  votingEndTime: string | null
+  submitTime: string | null
+}
+
+export interface ProposalDetailResponse extends ProposalSummary {
+  summary: string
+  proposer: string
+  depositEndTime: string | null
+  votingStartTime: string | null
+  totalDeposit: Coin[]
+  finalTallyResult: {
+    yesCount: string
+    noCount: string
+    abstainCount: string
+    noWithVetoCount: string
+  } | null
+  messages: DecodeMsg[]
+}
+
+export interface ProposalStats {
+  total: number
+  activeVoting: number
+  passed: number
+}
+
+export interface AccountDetailResponse {
+  address: string
+  accountNumber: string
+  sequence: string
+  balances: Coin[]
+  stakedBalance: Coin | null
+}
+
+export interface RecentAccount {
+  address: string
+  lastMessageType: string
+  lastActivityTime: string
+}
+
+export interface IBCTransferSummary extends IBCTransferFields {
+  hash: string
+  height: number
+  timestamp: string
+  status: 'success' | 'failed'
+}
+
+export interface EvmTokenTransfer {
+  type: 'token_transfer' | 'token_minting'
+  from: string
+  to: string
+  tokenAddress: string
+  tokenName: string | null
+  tokenSymbol: string | null
+  tokenDecimals: string | null
+  amount: string | null
+}
+
+export interface EvmTransactionDetails {
+  hash: string
+  status: 'ok' | 'error'
+  method: string | null
+  from: string
+  to: string | null
+  toIsContract: boolean
+  value: string
+  gasUsed: string
+  tokenTransfers: EvmTokenTransfer[]
+  explorerUrl: string | null
+}
+
+export interface ChainParamsResponse {
+  staking: Record<string, unknown> | null
+  mint: Record<string, unknown> | null
+  distribution: Record<string, unknown> | null
+  slashing: Record<string, unknown> | null
+  gov: {
+    votingParams: Record<string, unknown> | null
+    depositParams: Record<string, unknown> | null
+    tallyParams: Record<string, unknown> | null
+  }
+}
+
+export interface DenomMetadataResponse {
+  denom: string
+  displayName: string
+  symbol: string
+  decimals: number
+  source: 'seed' | 'manual' | 'fallback'
+}
+
+export interface NetworkStatusResponse {
+  chainId: string
+  blockHeight: number
+  catchingUp: boolean
+  peered: number
+  blockInterval: number
+}
+
+export interface HealthResponse {
+  status: 'ok' | 'degraded'
+  mongo: boolean
+  chain: boolean
+  indexerMode: 'backfill' | 'live'
+  lastIndexedHeight: number
+}
