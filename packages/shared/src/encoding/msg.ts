@@ -1,14 +1,41 @@
 import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx'
 import {
   MsgCommunityPoolSpend,
+  MsgFundCommunityPool,
+  MsgSetWithdrawAddress,
   MsgWithdrawDelegatorReward,
+  MsgWithdrawValidatorCommission,
 } from 'cosmjs-types/cosmos/distribution/v1beta1/tx'
-import { MsgDelegate } from 'cosmjs-types/cosmos/staking/v1beta1/tx'
-import { MsgUpdateClient } from 'cosmjs-types/ibc/core/client/v1/tx'
+import {
+  MsgBeginRedelegate,
+  MsgCancelUnbondingDelegation,
+  MsgCreateValidator,
+  MsgDelegate,
+  MsgEditValidator,
+  MsgUndelegate,
+} from 'cosmjs-types/cosmos/staking/v1beta1/tx'
+import {
+  MsgCreateClient,
+  MsgUpdateClient,
+} from 'cosmjs-types/ibc/core/client/v1/tx'
+import {
+  MsgConnectionOpenAck,
+  MsgConnectionOpenConfirm,
+  MsgConnectionOpenInit,
+  MsgConnectionOpenTry,
+} from 'cosmjs-types/ibc/core/connection/v1/tx'
 import { MsgSoftwareUpgrade } from 'cosmjs-types/cosmos/upgrade/v1beta1/tx'
 import {
   MsgAcknowledgement,
+  MsgChannelCloseConfirm,
+  MsgChannelCloseInit,
+  MsgChannelOpenAck,
+  MsgChannelOpenConfirm,
+  MsgChannelOpenInit,
+  MsgChannelOpenTry,
   MsgRecvPacket,
+  MsgTimeout,
+  MsgTimeoutOnClose,
 } from 'cosmjs-types/ibc/core/channel/v1/tx'
 import {
   MsgExec,
@@ -16,6 +43,13 @@ import {
   MsgRevoke,
 } from 'cosmjs-types/cosmos/authz/v1beta1/tx'
 import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx'
+import {
+  MsgDeposit,
+  MsgSubmitProposal,
+  MsgVote,
+  MsgVoteWeighted,
+} from 'cosmjs-types/cosmos/gov/v1/tx'
+import { MsgUnjail } from 'cosmjs-types/cosmos/slashing/v1beta1/tx'
 import { BinaryReader } from 'cosmjs-types/binary'
 import { Keccak256 } from '@cosmjs/crypto'
 import { toHex } from '@cosmjs/encoding'
@@ -24,15 +58,43 @@ const TYPE = {
   MsgSend: '/cosmos.bank.v1beta1.MsgSend',
   MsgWithdrawDelegatorReward:
     '/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward',
+  MsgWithdrawValidatorCommission:
+    '/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission',
+  MsgSetWithdrawAddress: '/cosmos.distribution.v1beta1.MsgSetWithdrawAddress',
+  MsgFundCommunityPool: '/cosmos.distribution.v1beta1.MsgFundCommunityPool',
+  MsgCommunityPoolSpend: '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend',
   MsgDelegate: '/cosmos.staking.v1beta1.MsgDelegate',
+  MsgUndelegate: '/cosmos.staking.v1beta1.MsgUndelegate',
+  MsgBeginRedelegate: '/cosmos.staking.v1beta1.MsgBeginRedelegate',
+  MsgCancelUnbondingDelegation:
+    '/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation',
+  MsgCreateValidator: '/cosmos.staking.v1beta1.MsgCreateValidator',
+  MsgEditValidator: '/cosmos.staking.v1beta1.MsgEditValidator',
+  MsgUnjail: '/cosmos.slashing.v1beta1.MsgUnjail',
+  MsgSubmitProposal: '/cosmos.gov.v1.MsgSubmitProposal',
+  MsgVote: '/cosmos.gov.v1.MsgVote',
+  MsgVoteWeighted: '/cosmos.gov.v1.MsgVoteWeighted',
+  MsgDeposit: '/cosmos.gov.v1.MsgDeposit',
+  MsgCreateClient: '/ibc.core.client.v1.MsgCreateClient',
   MsgUpdateClient: '/ibc.core.client.v1.MsgUpdateClient',
+  MsgConnectionOpenInit: '/ibc.core.connection.v1.MsgConnectionOpenInit',
+  MsgConnectionOpenTry: '/ibc.core.connection.v1.MsgConnectionOpenTry',
+  MsgConnectionOpenAck: '/ibc.core.connection.v1.MsgConnectionOpenAck',
+  MsgConnectionOpenConfirm: '/ibc.core.connection.v1.MsgConnectionOpenConfirm',
+  MsgChannelOpenInit: '/ibc.core.channel.v1.MsgChannelOpenInit',
+  MsgChannelOpenTry: '/ibc.core.channel.v1.MsgChannelOpenTry',
+  MsgChannelOpenAck: '/ibc.core.channel.v1.MsgChannelOpenAck',
+  MsgChannelOpenConfirm: '/ibc.core.channel.v1.MsgChannelOpenConfirm',
+  MsgChannelCloseInit: '/ibc.core.channel.v1.MsgChannelCloseInit',
+  MsgChannelCloseConfirm: '/ibc.core.channel.v1.MsgChannelCloseConfirm',
   MsgAcknowledgement: '/ibc.core.channel.v1.MsgAcknowledgement',
   MsgRecvPacket: '/ibc.core.channel.v1.MsgRecvPacket',
+  MsgTimeout: '/ibc.core.channel.v1.MsgTimeout',
+  MsgTimeoutOnClose: '/ibc.core.channel.v1.MsgTimeoutOnClose',
   MsgExec: '/cosmos.authz.v1beta1.MsgExec',
   MsgGrant: '/cosmos.authz.v1beta1.MsgGrant',
   MsgRevoke: '/cosmos.authz.v1beta1.MsgRevoke',
   MsgTransfer: '/ibc.applications.transfer.v1.MsgTransfer',
-  MsgCommunityPoolSpend: '/cosmos.distribution.v1beta1.MsgCommunityPoolSpend',
   MsgSoftwareUpgrade: '/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade',
   MsgEthereumTx: '/cosmos.evm.vm.v1.MsgEthereumTx',
 }
@@ -83,6 +145,73 @@ const decodeMsgEthereumTx = (value: Uint8Array): MsgEthereumTxFields => {
   }
 }
 
+// Best-effort decoder for message types we have no generated (or hand-
+// written) decoder for — e.g. a chain-specific custom module like
+// steemvm.steembridge.v1.MsgConfirmName, where no proto is available to
+// decode against. Surfaces the raw protobuf fields (numbered, since we don't
+// know their real names) instead of showing nothing: printable text is
+// shown as a string, 20/32-byte values (the common length for
+// addresses/hashes) as 0x-hex, everything else as 0x-hex with a byte count.
+// This is honest about what it doesn't know rather than guessing field
+// names — if you have the real .proto for a type, add a proper decoder
+// above instead.
+const decodeIfPrintableText = (bytes: Uint8Array): string | null => {
+  if (bytes.length === 0) return null
+
+  let text = ''
+  for (const byte of bytes) {
+    const isPrintableAscii = byte >= 0x20 && byte <= 0x7e
+    const isCommonWhitespace = byte === 0x09 || byte === 0x0a || byte === 0x0d
+    if (!isPrintableAscii && !isCommonWhitespace) return null
+    text += String.fromCharCode(byte)
+  }
+  return text
+}
+
+const decodeUnknownMessage = (value: Uint8Array): Record<string, unknown> => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Record<string, unknown> = {}
+  let fieldCount = 0
+
+  while (reader.pos < end && fieldCount < 200) {
+    fieldCount += 1
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    const key = `field_${fieldNo}`
+
+    switch (wireType) {
+      case 0:
+        fields[key] = reader.uint64().toString()
+        break
+      case 1:
+        fields[key] = reader.double()
+        break
+      case 2: {
+        const bytes = reader.bytes()
+        const text = decodeIfPrintableText(bytes)
+        if (text !== null) {
+          fields[key] = text
+        } else if (bytes.length === 20 || bytes.length === 32) {
+          fields[key] = `0x${toHex(bytes)}`
+        } else {
+          fields[key] = `0x${toHex(bytes)} (${bytes.length} bytes)`
+        }
+        break
+      }
+      case 5:
+        fields[key] = reader.fixed32()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return fields
+}
+
 export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
   let data = null
   switch (typeUrl) {
@@ -92,17 +221,98 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
     case TYPE.MsgWithdrawDelegatorReward:
       data = MsgWithdrawDelegatorReward.decode(value)
       break
+    case TYPE.MsgWithdrawValidatorCommission:
+      data = MsgWithdrawValidatorCommission.decode(value)
+      break
+    case TYPE.MsgSetWithdrawAddress:
+      data = MsgSetWithdrawAddress.decode(value)
+      break
+    case TYPE.MsgFundCommunityPool:
+      data = MsgFundCommunityPool.decode(value)
+      break
+    case TYPE.MsgCommunityPoolSpend:
+      data = MsgCommunityPoolSpend.decode(value)
+      break
     case TYPE.MsgDelegate:
       data = MsgDelegate.decode(value)
       break
+    case TYPE.MsgUndelegate:
+      data = MsgUndelegate.decode(value)
+      break
+    case TYPE.MsgBeginRedelegate:
+      data = MsgBeginRedelegate.decode(value)
+      break
+    case TYPE.MsgCancelUnbondingDelegation:
+      data = MsgCancelUnbondingDelegation.decode(value)
+      break
+    case TYPE.MsgCreateValidator:
+      data = MsgCreateValidator.decode(value)
+      break
+    case TYPE.MsgEditValidator:
+      data = MsgEditValidator.decode(value)
+      break
+    case TYPE.MsgUnjail:
+      data = MsgUnjail.decode(value)
+      break
+    case TYPE.MsgSubmitProposal:
+      data = MsgSubmitProposal.decode(value)
+      break
+    case TYPE.MsgVote:
+      data = MsgVote.decode(value)
+      break
+    case TYPE.MsgVoteWeighted:
+      data = MsgVoteWeighted.decode(value)
+      break
+    case TYPE.MsgDeposit:
+      data = MsgDeposit.decode(value)
+      break
+    case TYPE.MsgCreateClient:
+      data = MsgCreateClient.decode(value)
+      break
     case TYPE.MsgUpdateClient:
       data = MsgUpdateClient.decode(value)
+      break
+    case TYPE.MsgConnectionOpenInit:
+      data = MsgConnectionOpenInit.decode(value)
+      break
+    case TYPE.MsgConnectionOpenTry:
+      data = MsgConnectionOpenTry.decode(value)
+      break
+    case TYPE.MsgConnectionOpenAck:
+      data = MsgConnectionOpenAck.decode(value)
+      break
+    case TYPE.MsgConnectionOpenConfirm:
+      data = MsgConnectionOpenConfirm.decode(value)
+      break
+    case TYPE.MsgChannelOpenInit:
+      data = MsgChannelOpenInit.decode(value)
+      break
+    case TYPE.MsgChannelOpenTry:
+      data = MsgChannelOpenTry.decode(value)
+      break
+    case TYPE.MsgChannelOpenAck:
+      data = MsgChannelOpenAck.decode(value)
+      break
+    case TYPE.MsgChannelOpenConfirm:
+      data = MsgChannelOpenConfirm.decode(value)
+      break
+    case TYPE.MsgChannelCloseInit:
+      data = MsgChannelCloseInit.decode(value)
+      break
+    case TYPE.MsgChannelCloseConfirm:
+      data = MsgChannelCloseConfirm.decode(value)
       break
     case TYPE.MsgAcknowledgement:
       data = MsgAcknowledgement.decode(value)
       break
     case TYPE.MsgRecvPacket:
       data = MsgRecvPacket.decode(value)
+      break
+    case TYPE.MsgTimeout:
+      data = MsgTimeout.decode(value)
+      break
+    case TYPE.MsgTimeoutOnClose:
+      data = MsgTimeoutOnClose.decode(value)
       break
     case TYPE.MsgExec:
       data = MsgExec.decode(value)
@@ -116,9 +326,6 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
     case TYPE.MsgTransfer:
       data = MsgTransfer.decode(value)
       break
-    case TYPE.MsgCommunityPoolSpend:
-      data = MsgCommunityPoolSpend.decode(value)
-      break
     case TYPE.MsgSoftwareUpgrade:
       data = MsgSoftwareUpgrade.decode(value)
       break
@@ -126,6 +333,7 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       data = decodeMsgEthereumTx(value)
       break
     default:
+      data = decodeUnknownMessage(value)
       break
   }
 
