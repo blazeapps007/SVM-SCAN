@@ -4,6 +4,7 @@ import { useTheme } from '@/theme/ThemeProvider'
 import { useAccountData } from '@/hooks/useAccountData'
 import AccountHeader from '@/components/AccountDetail/AccountHeader'
 import Balances from '@/components/AccountDetail/Balances'
+import EvmTokens from '@/components/AccountDetail/EvmTokens'
 import TransactionList from '@/components/AccountDetail/TransactionList'
 
 export default function AccountDetail() {
@@ -55,6 +56,7 @@ export default function AccountDetail() {
       {backLink}
       <AccountHeader address={address} account={account} />
       <Balances balances={balances} stakedBalance={stakedBalance} />
+      <EvmTokens address={address} />
       <TransactionList transactions={transactions} totalCount={totalCount} />
     </div>
   )

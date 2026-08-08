@@ -175,6 +175,35 @@ export const parseDetailsLines = (
   return pairs as { key: string; value: string }[]
 }
 
+// Renders a raw base-unit EVM token amount using BigInt math (amounts
+// routinely exceed Number's safe integer range, so no float division here).
+export const formatTokenAmount = (
+  rawAmount: string | null,
+  decimals: string | null,
+  symbol: string | null
+): string => {
+  const suffix = symbol ? ` ${symbol}` : ''
+  if (!rawAmount) return `—${suffix}`
+
+  const decimalsNum = decimals ? parseInt(decimals, 10) : 0
+  try {
+    const value = BigInt(rawAmount)
+    const divisor = 10n ** BigInt(decimalsNum)
+    const whole = value / divisor
+    const fraction = value % divisor
+    if (decimalsNum === 0 || fraction === 0n) {
+      return `${whole.toString()}${suffix}`
+    }
+    const fractionStr = fraction
+      .toString()
+      .padStart(decimalsNum, '0')
+      .replace(/0+$/, '')
+    return `${whole.toString()}${fractionStr ? `.${fractionStr}` : ''}${suffix}`
+  } catch {
+    return `${rawAmount}${suffix}`
+  }
+}
+
 // Helper function to safely serialize objects with BigInt values
 export const safeStringify = (obj: unknown, space?: number): string => {
   return JSON.stringify(

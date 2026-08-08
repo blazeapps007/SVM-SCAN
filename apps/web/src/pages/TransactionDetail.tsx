@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/apiClient'
 import { useTheme } from '@/theme/ThemeProvider'
 import {
   convertRateToPercent,
+  formatTokenAmount,
   getTypeMsg,
   isBech32Address,
   parseDetailsLines,
@@ -57,35 +58,6 @@ const TYPE_LABELS: Record<string, string> = {
 const TOKEN_TRANSFER_TYPE_LABELS: Record<string, string> = {
   token_minting: 'Mint',
   token_transfer: 'Transfer',
-}
-
-// Renders a raw base-unit token amount using BigInt math (amounts routinely
-// exceed Number's safe integer range, so no float division here).
-const formatTokenAmount = (
-  rawAmount: string | null,
-  decimals: string | null,
-  symbol: string | null
-): string => {
-  const suffix = symbol ? ` ${symbol}` : ''
-  if (!rawAmount) return `—${suffix}`
-
-  const decimalsNum = decimals ? parseInt(decimals, 10) : 0
-  try {
-    const value = BigInt(rawAmount)
-    const divisor = 10n ** BigInt(decimalsNum)
-    const whole = value / divisor
-    const fraction = value % divisor
-    if (decimalsNum === 0 || fraction === 0n) {
-      return `${whole.toString()}${suffix}`
-    }
-    const fractionStr = fraction
-      .toString()
-      .padStart(decimalsNum, '0')
-      .replace(/0+$/, '')
-    return `${whole.toString()}${fractionStr ? `.${fractionStr}` : ''}${suffix}`
-  } catch {
-    return `${rawAmount}${suffix}`
-  }
 }
 
 const formatUtcTimestamp = (value: string | undefined) => {
