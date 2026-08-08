@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
+  FiAlertTriangle,
   FiChevronLeft,
   FiShield,
   FiKey,
@@ -159,8 +160,13 @@ const ValidatorDetail: React.FC = () => {
     )
   }
 
-  const isActive = validator.status === 'BOND_STATUS_BONDED'
+  const isActive = validator.status === 'BOND_STATUS_BONDED' && !validator.jailed
   const votingPowerPercent = validator.votingPowerPercent.toFixed(2)
+  const statusColor = validator.jailed
+    ? colors.status.warning
+    : isActive
+      ? colors.status.success
+      : colors.status.error
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -192,13 +198,16 @@ const ValidatorDetail: React.FC = () => {
               <span
                 className="reference-pill"
                 style={{
-                  backgroundColor: isActive
-                    ? `${colors.status.success}20`
-                    : `${colors.status.error}20`,
-                  color: isActive ? colors.status.success : colors.status.error,
+                  backgroundColor: `${statusColor}20`,
+                  color: statusColor,
                 }}
               >
-                {isActive ? (
+                {validator.jailed ? (
+                  <>
+                    <FiAlertTriangle className="mr-1 h-3 w-3" />
+                    Jailed
+                  </>
+                ) : isActive ? (
                   <>
                     <FiCheckCircle className="mr-1 h-3 w-3" />
                     Active

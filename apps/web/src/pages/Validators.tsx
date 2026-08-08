@@ -27,10 +27,10 @@ const Validators: React.FC = () => {
   const [page, setPage] = useState(0)
 
   const validatorsQuery = useQuery({
-    queryKey: ['validators', 'active', page],
+    queryKey: ['validators', 'all', page],
     queryFn: () =>
       apiClient.get<Paginated<ValidatorSummary>>(
-        `/validators?status=active&page=${page}&perPage=${PER_PAGE}`
+        `/validators?page=${page}&perPage=${PER_PAGE}`
       ),
     refetchInterval: 15_000,
   })
@@ -42,7 +42,8 @@ const Validators: React.FC = () => {
   })
 
   const data = validatorsQuery.data?.data ?? []
-  const totalActiveValidator = validatorsQuery.data?.pagination.total ?? 0
+  const totalListed = validatorsQuery.data?.pagination.total ?? 0
+  const activeCount = statsQuery.data?.activeCount ?? 0
   const totalValidator = statsQuery.data?.totalCount ?? 0
   const avgCommission = `${(statsQuery.data?.avgCommission ?? 0).toFixed(1)}%`
 
@@ -51,7 +52,7 @@ const Validators: React.FC = () => {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatCard
           title="Active Validators"
-          value={totalActiveValidator}
+          value={activeCount}
           icon={FiShield}
           subtitle="Currently bonded"
           index={0}
@@ -89,7 +90,13 @@ const Validators: React.FC = () => {
 
         {data.map((v, index) => {
           const percentage = v.votingPowerPercent
-          const isActive = v.status === 'BOND_STATUS_BONDED'
+          const isActive = v.status === 'BOND_STATUS_BONDED' && !v.jailed
+          const statusLabel = v.jailed ? 'Jailed' : isActive ? 'Active' : 'Inactive'
+          const statusColor = v.jailed
+            ? colors.status.warning
+            : isActive
+              ? colors.status.success
+              : colors.status.error
 
           return (
             <Link
@@ -158,13 +165,11 @@ const Validators: React.FC = () => {
               <span
                 className="reference-pill w-fit justify-self-end"
                 style={{
-                  backgroundColor: isActive
-                    ? `${colors.status.success}20`
-                    : `${colors.status.error}20`,
-                  color: isActive ? colors.status.success : colors.status.error,
+                  backgroundColor: `${statusColor}20`,
+                  color: statusColor,
                 }}
               >
-                {isActive ? 'Active' : 'Inactive'}
+                {statusLabel}
               </span>
             </Link>
           )
@@ -188,8 +193,8 @@ const Validators: React.FC = () => {
         >
           <span className="text-xs" style={{ color: colors.text.tertiary }}>
             Showing {page * PER_PAGE + 1}–
-            {Math.min((page + 1) * PER_PAGE, totalActiveValidator)} of{' '}
-            {totalActiveValidator} validators
+            {Math.min((page + 1) * PER_PAGE, totalListed)} of {totalListed}{' '}
+            validators
           </span>
           <div className="flex gap-2">
             <button
@@ -207,7 +212,7 @@ const Validators: React.FC = () => {
             </button>
             <button
               type="button"
-              disabled={(page + 1) * PER_PAGE >= totalActiveValidator}
+              disabled={(page + 1) * PER_PAGE >= totalListed}
               onClick={() => setPage(page + 1)}
               className="rounded-[8px] border px-[13px] py-[7px] text-[12.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               style={{
