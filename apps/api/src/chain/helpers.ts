@@ -1,4 +1,4 @@
-import { toBech32, fromBech32 } from '@cosmjs/encoding'
+import { toBech32, fromBech32, toHex } from '@cosmjs/encoding'
 import { sha256 } from '@cosmjs/crypto'
 import { PubKey as Ed25519PubKey } from 'cosmjs-types/cosmos/crypto/ed25519/keys'
 
@@ -33,4 +33,18 @@ export const pubkeyToValconsAddress = (
   const { prefix } = fromBech32(operatorAddress)
   const valconsPrefix = prefix.replace(/valoper$/, 'valcons')
   return toBech32(valconsPrefix, addressBytes)
+}
+
+// This chain's bech32 account addresses are exactly the same 20 bytes as
+// the account's EVM address, just bech32-encoded instead of hex — verified
+// against a live account (eth_getBalance on the derived address matches the
+// cosmos-side balance exactly), not assumed from spec.
+export const bech32ToEvmAddress = (address: string): string | null => {
+  try {
+    const { data } = fromBech32(address)
+    if (data.length !== 20) return null
+    return `0x${toHex(data)}`
+  } catch {
+    return null
+  }
 }

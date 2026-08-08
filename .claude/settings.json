@@ -62,7 +62,10 @@
       "Bash(git commit -m ' *)",
       "Bash(git restore *)",
       "Bash(timeout 30 pnpm exec tsx scripts_tmp/decode_test.mjs)",
-      "Bash(timeout 40 pnpm exec tsx scripts_tmp/reindex_test.mjs)"
+      "Bash(timeout 40 pnpm exec tsx scripts_tmp/reindex_test.mjs)",
+      "Bash(curl -s -m 15 \"https://evmscan.steemscanner.com/api/v2/addresses/0x7fb5a561b74e7da7cd5fb1497830e96b3310d857/tokens\")",
+      "Bash(curl -s -m 15 \"https://evmscan.steemscanner.com/api/v2/addresses/0x7fb5a561b74e7da7cd5fb1497830e96b3310d857/tokens\" -o /tmp/tokens.json)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

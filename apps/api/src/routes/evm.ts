@@ -1,6 +1,11 @@
 import type { FastifyInstance } from 'fastify'
-import type { EvmTokenTransfer, EvmTransactionDetails } from '@dexplorer/shared'
+import type {
+  AddressTokenHolding,
+  EvmTokenTransfer,
+  EvmTransactionDetails,
+} from '@dexplorer/shared'
 import { env } from '../config/env'
+import { bech32ToEvmAddress } from '../chain/helpers'
 import {
   decodeTokenTransferLogs,
   getErc20Metadata,
@@ -15,6 +20,27 @@ const evmTxCache = new Map<
   string,
   { fetchedAt: number; data: EvmTransactionDetails }
 >()
+
+const ADDRESS_TOKENS_CACHE_TTL_MS = 60_000
+const addressTokensCache = new Map<
+  string,
+  { fetchedAt: number; data: AddressTokenHolding[] }
+>()
+
+interface BlockscoutAddressToken {
+  token: {
+    address_hash: string
+    type: string
+    name: string | null
+    symbol: string | null
+    decimals: string | null
+  }
+  value: string
+}
+
+interface BlockscoutAddressTokensResponse {
+  items: BlockscoutAddressToken[]
+}
 
 export function registerEvmRoutes(app: FastifyInstance): void {
   app.get<{ Params: { hash: string } }>(
@@ -98,6 +124,63 @@ export function registerEvmRoutes(app: FastifyInstance): void {
         return reply
           .status(502)
           .send({ error: 'Failed to fetch EVM transaction' })
+      }
+    }
+  )
+
+  // Token holdings (ERC-20 balances, ERC-721/1155 collection counts) can't
+  // be discovered via JSON-RPC alone — there's no eth_ call that answers
+  // "what tokens does this address hold," only "what's this address's
+  // balance on token X," which requires already knowing every token
+  // contract address in advance. Proxying the chain's own Blockscout
+  // instance (which has already indexed every Transfer event chain-wide)
+  // is the only practical source for this. Fails soft — an empty array,
+  // not an error — since this is supplementary to the account page, not
+  // load-bearing: if Blockscout is unreachable, balances/staked (fetched
+  // directly from the chain) are unaffected.
+  app.get<{ Params: { address: string } }>(
+    '/evm/address/:address/tokens',
+    async (request) => {
+      if (!env.EVM_EXPLORER_API_URL) {
+        return []
+      }
+
+      const evmAddress = bech32ToEvmAddress(request.params.address)
+      if (!evmAddress) {
+        return []
+      }
+
+      const cached = addressTokensCache.get(evmAddress)
+      if (
+        cached &&
+        Date.now() - cached.fetchedAt < ADDRESS_TOKENS_CACHE_TTL_MS
+      ) {
+        return cached.data
+      }
+
+      try {
+        const response = await fetch(
+          `${env.EVM_EXPLORER_API_URL}/api/v2/addresses/${evmAddress}/tokens`
+        )
+        if (!response.ok) {
+          return []
+        }
+
+        const raw = (await response.json()) as BlockscoutAddressTokensResponse
+        const data: AddressTokenHolding[] = (raw.items ?? []).map((item) => ({
+          tokenAddress: item.token.address_hash,
+          tokenType: item.token.type,
+          name: item.token.name,
+          symbol: item.token.symbol,
+          decimals: item.token.decimals,
+          value: item.value,
+        }))
+
+        addressTokensCache.set(evmAddress, { fetchedAt: Date.now(), data })
+        return data
+      } catch (err) {
+        request.log.error(err)
+        return []
       }
     }
   )

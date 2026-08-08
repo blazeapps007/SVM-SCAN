@@ -179,6 +179,15 @@ export interface EvmTransactionDetails {
   explorerUrl: string | null
 }
 
+export interface AddressTokenHolding {
+  tokenAddress: string
+  tokenType: string
+  name: string | null
+  symbol: string | null
+  decimals: string | null
+  value: string
+}
+
 export interface ChainParamsResponse {
   staking: Record<string, unknown> | null
   mint: Record<string, unknown> | null
