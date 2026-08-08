@@ -40,6 +40,7 @@ function toSummary(
     moniker: doc.moniker,
     identity: doc.identity,
     status: doc.status,
+    jailed: doc.jailed,
     tokens: doc.tokens,
     bondDenom,
     commissionRate: doc.commissionRate,

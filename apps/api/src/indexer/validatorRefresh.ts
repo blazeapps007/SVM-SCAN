@@ -38,6 +38,7 @@ export async function refreshValidators(
           website: validator.description?.website ?? '',
           details: validator.description?.details ?? '',
           status: bondStatusToJSON(validator.status),
+          jailed: validator.jailed,
           tokens: validator.tokens,
           delegatorShares: validator.delegatorShares,
           commissionRate: validator.commission?.commissionRates?.rate ?? '0',

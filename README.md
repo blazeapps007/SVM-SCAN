@@ -2,36 +2,30 @@
   <h1 align="center">🚀 SVM Scan</h1>
 
   <p align="center">
-    <strong>Disposable Cosmos-based Blockchain Explorer</strong>
+    <strong>Steem Virtual Machine Explorer</strong>
     <br />
-    A lightweight, real-time blockchain explorer for Cosmos SDK chains
+    An indexed block explorer for the Steem Virtual Machine chain — Cosmos SDK data and EVM data, one API, one UI
     <br />
     <br />
-    <a href="#demo">View Demo</a>
+    <a href="#features">Features</a>
     ·
-    <a href="https://github.com/arifintahu/dexplorer/issues">Report Bug</a>
+    <a href="https://github.com/blazeapps007/SVM-SCAN/issues">Report Bug</a>
     ·
-    <a href="https://github.com/arifintahu/dexplorer/issues">Request Feature</a>
+    <a href="https://github.com/blazeapps007/SVM-SCAN/issues">Request Feature</a>
   </p>
 
   <p align="center">
-    <a href="https://github.com/arifintahu/dexplorer/blob/main/LICENSE">
-      <img src="https://img.shields.io/github/license/arifintahu/dexplorer.svg" alt="License" />
+    <a href="https://github.com/blazeapps007/SVM-SCAN/blob/main/LICENSE">
+      <img src="https://img.shields.io/github/license/blazeapps007/SVM-SCAN.svg" alt="License" />
     </a>
-    <a href="https://github.com/arifintahu/dexplorer/actions/workflows/ci.yml">
-      <img src="https://github.com/arifintahu/dexplorer/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
+    <a href="https://github.com/blazeapps007/SVM-SCAN/actions/workflows/ci.yml">
+      <img src="https://github.com/blazeapps007/SVM-SCAN/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
     </a>
-    <a href="https://github.com/arifintahu/dexplorer/deployments/activity_log">
-      <img src="https://vercelbadge.vercel.app/api/arifintahu/dexplorer" alt="Vercel Deploy" />
+    <a href="https://github.com/blazeapps007/SVM-SCAN/stargazers">
+      <img src="https://img.shields.io/github/stars/blazeapps007/SVM-SCAN" alt="Stars" />
     </a>
-    <a href="https://github.com/arifintahu/dexplorer/graphs/contributors">
-      <img src="https://img.shields.io/github/contributors/arifintahu/dexplorer" alt="Contributors" />
-    </a>
-    <a href="https://github.com/arifintahu/dexplorer/stargazers">
-      <img src="https://img.shields.io/github/stars/arifintahu/dexplorer" alt="Stars" />
-    </a>
-    <a href="https://github.com/arifintahu/dexplorer/network/members">
-      <img src="https://img.shields.io/github/forks/arifintahu/dexplorer" alt="Forks" />
+    <a href="https://github.com/blazeapps007/SVM-SCAN/network/members">
+      <img src="https://img.shields.io/github/forks/blazeapps007/SVM-SCAN" alt="Forks" />
     </a>
   </p>
 </div>
@@ -39,349 +33,210 @@
 ## 📋 Table of Contents
 
 - [About](#about)
-- [Demo](#demo)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Deployment](#deployment)
 - [Project Structure](#project-structure)
+- [Extending](#extending)
 - [Contributing](#contributing)
 - [FAQ](#faq)
 - [License](#license)
-- [Contributors](#contributors)
+- [Acknowledgments](#acknowledgments)
 
 ## 🌟 About
 
-**SVM Scan** is a lightweight blockchain explorer for Cosmos-based blockchains. It's a pnpm monorepo with two parts: a **backend indexer** (`apps/api`) that walks a chain from genesis via Tendermint RPC and persists everything to MongoDB, and a **frontend** (`apps/web`) that reads from the backend's REST API — so data survives page reloads and history isn't limited to the last few in-memory blocks.
+**SVM Scan** is a block explorer for the **Steem Virtual Machine** chain — a Cosmos SDK chain with an EVM execution layer bolted on. It's a pnpm monorepo with three parts:
 
-This makes it perfect for:
+- **`apps/api`** — a Fastify + MongoDB backend that indexes the chain from genesis (resumable backfill via Tendermint RPC, then a live tail for new blocks), decodes both Cosmos SDK messages and EVM transactions, and serves everything over a REST API.
+- **`apps/web`** — the React/Vite frontend. It has no direct chain connection — it only talks to `apps/api` over HTTP.
+- **`packages/shared`** — code that must be identical on both sides: the Cosmos SDK message-decoding registry, denom-conversion utils, and the REST API's TypeScript response contracts.
 
-- 🔧 **Development**: Quick exploration during chain development
-- 🧪 **Testing**: Instant setup for testnets and local chains
-- 📊 **Monitoring**: Real-time blockchain data visualization
-- 🗄️ **Historical data**: Full chain history persisted in MongoDB, not lost on reload
-
-## 🎬 Demo
-
-### Screenshots
-
-#### 🏠 Home Dashboard
-
-![Dexplorer Home Dashboard](./public/dexplorer2.jpeg)
-_Real-time blockchain explorer dashboard showing chain statistics, latest blocks, and transactions_
-
-#### 🔗 Connect to Blockchain
-
-![Connect to Blockchain](./public/dexplorer1.jpeg)
-_Simple connection interface to connect to any Cosmos SDK RPC endpoint_
-
-### Live Demo
-
-🌐 **[Try Dexplorer Live](https://dexplorer.arifintahu.com)**
-
-_Connect to any Cosmos RPC endpoint and start exploring!_
+Because history lives in MongoDB rather than browser memory, data survives page reloads and isn't capped to the last N in-memory blocks.
 
 ## ✨ Features
 
-- 🔗 **Universal Connectivity**: Connect to any Cosmos-based RPC endpoint
-- 📊 **Real-time Dashboard**: Monitor chain activity with live updates via WebSocket
-- 🔔 **Live Subscriptions**: Subscribe to latest blocks and transactions
-- 🔍 **Powerful Search**: Find blocks, transactions, and accounts instantly
-- 👥 **Validator Insights**: Browse active validators with real uptime, commission, and voting power
-- 🗳️ **Governance**: Explore proposals and voting results
-- ⚙️ **Chain Parameters**: View blockchain configuration and parameters
-- 🌉 **IBC Transfers**: Track cross-chain transfers with converted amounts and channel data
-- 📱 **Responsive Design**: Works seamlessly on desktop and mobile
-- 🎨 **Modern UI**: Clean, intuitive interface with dark/light themes and smooth animations
-- ♿ **Accessible**: WCAG 2.1 AA compliant — keyboard navigable, screen-reader friendly, respects reduced motion
-- 🌍 **i18n Ready**: Built on i18next, currently shipping English
-- 🗄️ **Persistent**: Backend indexer + MongoDB — data survives reloads and goes back to genesis
+**Cosmos SDK side**
+
+- 📦 **Blocks & Transactions** — full history, indexed from genesis, with decoded messages (bank, staking, gov, slashing, distribution, IBC, and more — see [Extending](#extending))
+- 👥 **Validators** — active set with real voting power, commission, uptime, and self-bond, denominated correctly against the chain's actual token decimals
+- 🗳️ **Governance** — proposals with live vote tallies while voting is in progress, not just the final result
+- 🌉 **IBC Transfers** — cross-chain transfers with amounts normalized to their base denom (correctly unwraps denom trace paths on returning vouchers)
+- ⚙️ **Chain Parameters** — staking, mint, distribution, slashing, and gov module config
+- 🔍 **Account pages** — native + IBC balances, staked balance, transaction history, and (if the account is also a validator) a link to its validator profile
+
+**EVM side**
+
+- 📜 **Decoded EVM transactions** — method name, interacted-with contract, and ERC-20/token transfers, decoded directly from the chain's own EVM JSON-RPC (no third-party indexer required)
+- 🪙 **Token holdings** — ERC-20 balances and ERC-721/1155 NFT collections for any account, proxied from a Blockscout-compatible explorer
+- 💧 **Liquidity Pools** — Uniswap V3-style pools are detected and indexed as they're created (token pair, fee tier, tick spacing), browsable in their own page
+
+**Platform**
+
+- 🗄️ **Persistent** — MongoDB-backed, survives reloads, goes back to genesis
+- 🐳 **Single-container deploy** — one Docker image serves the API and the built frontend behind one port
+- 🎨 **Modern UI** — dark/light themes, responsive layout
 
 ## 🛠️ Tech Stack
 
-### Frontend Core
+**Frontend (`apps/web`)** — React 18, TypeScript, Vite, Tailwind CSS, TanStack Query (all data fetching), React Router.
 
-- **React 18** - Modern React with hooks and concurrent features
-- **TypeScript** - Type-safe development
-- **Vite** - Lightning-fast build tool and dev server
-- **Tailwind CSS** - Utility-first CSS framework
+**Backend (`apps/api`)** — Fastify, native `mongodb` driver + Zod schemas (no Mongoose, no `any`), `@cosmjs/stargate` / `@cosmjs/tendermint-rpc` for chain queries, raw EVM JSON-RPC calls for the EVM side, `tsx` for running TypeScript directly (no build/bundle step).
 
-### State & Data Management
+**Shared (`packages/shared`)** — the Cosmos SDK message-decoding registry and denom utilities, imported by both apps so decoding logic can't drift between them.
 
-- **TanStack Query** - Fetches from the backend REST API, powers polling for "live" views
-- **React Router** - Client-side routing
-
-### Backend (`apps/api`)
-
-- **Fastify** - REST API server
-- **MongoDB** (native driver + Zod schemas) - Persists blocks, transactions, validators, proposals, params
-- **CosmJS** - Cosmos SDK JavaScript library (@cosmjs/stargate, @cosmjs/tendermint-rpc)
-- **WebSocket RPC** - The indexer's connection to the chain (backfill + live tail)
-- **Protobuf** - Message encoding/decoding, extensible via `packages/shared/src/encoding/msg.ts`
-
-### UI Components & UX
-
-- **Framer Motion** - Smooth animations and transitions
-- **React Icons** - Modern icon set
-- **Sonner** - Toast notifications
-
-### Development & Quality Assurance
-
-- **Vitest** - Blazing fast unit test framework
-- **React Testing Library** - Component testing
-- **ESLint** - Code linting
-- **Prettier** - Code formatting
-- **Husky & Lint-staged** - Git hooks for code quality
-- **Vercel** - Deployment platform
+**Tooling** — pnpm workspaces, Vitest + React Testing Library, ESLint + Prettier, GitHub Actions CI, Docker.
 
 ## 📋 Prerequisites
 
-Before running SVM Scan, ensure you have:
-
-- **Node.js** (v22.0.0 or higher)
-- **pnpm** (v8.0.0 or higher) - _Recommended package manager_
-- **Git** - For cloning the repository
-- **MongoDB** - A connection string (local, Docker, or [Atlas](https://www.mongodb.com/cloud/atlas)) for the backend to index into
-- **A Cosmos SDK chain RPC endpoint** - Tendermint/CometBFT RPC (e.g. `https://rpc.cosmos.nodestake.org`) for the backend to index from
+- **Node.js** v22 or higher
+- **pnpm** v9 or higher (`corepack enable` will provision it)
+- **MongoDB** — a connection string (local, Docker, or [Atlas](https://www.mongodb.com/cloud/atlas)) for the backend to index into
+- **RPC access to the chain** — a Tendermint/CometBFT RPC endpoint (Cosmos side) and, optionally, an EVM JSON-RPC endpoint (for decoded EVM transaction detail) and a Blockscout-compatible API (for ERC-20/NFT holdings)
 
 ## 🚀 Installation
 
-### Quick Start
+### Quick Start (local dev)
 
 ```bash
-# Clone the repository
-git clone https://github.com/arifintahu/dexplorer.git
-cd dexplorer
+git clone https://github.com/blazeapps007/SVM-SCAN.git
+cd SVM-SCAN
 
-# Install dependencies (installs all three workspaces)
+# Install dependencies (all three workspaces)
 pnpm install
 
-# Configure the backend: copy the template and fill in real values
+# Configure the backend
 cp apps/api/.env.example apps/api/.env
-# edit apps/api/.env — set MONGODB_URI (a MongoDB/Atlas connection string)
-# and RPC_ADDRESS (the chain's Tendermint/CometBFT RPC endpoint)
+# edit apps/api/.env — MONGODB_URI and RPC_ADDRESS are required;
+# EVM_RPC_URL / EVM_EXPLORER_API_URL are optional (enable EVM tx detail
+# and token-holdings features when set)
 
-# Start the backend (indexes the chain into MongoDB, serves the REST API)
+# Start the backend (indexes the chain, serves the REST API on :4000)
 pnpm dev:api
 
 # In a second terminal, start the frontend
 pnpm dev:web
 ```
 
-Open [http://localhost:5173](http://localhost:5173) — the frontend talks to the API at `http://localhost:4000` by default (proxied in dev via `apps/web/vite.config.ts`; configurable via `VITE_API_BASE_URL`, see `apps/web/.env.example`).
-
-### Production Build
-
-```bash
-# Build every workspace
-pnpm build
-
-# Or a single one
-pnpm --filter @dexplorer/web build
-pnpm --filter @dexplorer/api build   # type-check only — apps/api runs via tsx, no bundling step
-```
+Open [http://localhost:5173](http://localhost:5173) — the frontend talks to the API at `http://localhost:4000/api` by default (configurable via `VITE_API_BASE_URL`, see `apps/web/.env.example`).
 
 ### Running Tests
 
 ```bash
 pnpm test    # all workspaces
-pnpm check   # type check, all workspaces
+pnpm check   # type-check, all workspaces
+pnpm lint    # all workspaces
 ```
+
+CI (`.github/workflows/ci.yml`) runs all three on every push/PR to `main` — there's no local pre-commit hook, so run these yourself before pushing.
 
 ## ⚙️ Configuration
 
-Both apps are configured via env files (never commit real secrets — `.env` is gitignored, `.env.example` holds placeholders only):
+Real secrets go in gitignored `.env` files — never in `.env.example`.
 
 **`apps/api/.env`** (backend — owns the chain connection):
 
-- `MONGODB_URI` — MongoDB connection string (indexed data lives here)
-- `RPC_ADDRESS` — the chain's Tendermint/CometBFT RPC endpoint (backfilled from genesis, then live-tailed)
-- `CHAIN_NAME` — optional display name
-- `PORT` — API port (default `4000`)
-- `BACKFILL_BATCH_SIZE` / `BACKFILL_CONCURRENCY` — backfill tuning
-- `VALIDATOR_REFRESH_INTERVAL_MS` / `PARAMS_REFRESH_INTERVAL_MS` / `PROPOSAL_REFRESH_INTERVAL_MS` — how often low-churn data is re-polled
+| Variable | Required | Purpose |
+|---|---|---|
+| `MONGODB_URI` | ✅ | Where indexed data is persisted |
+| `RPC_ADDRESS` | ✅ | Tendermint/CometBFT RPC — backfilled from genesis, then live-tailed |
+| `CHAIN_NAME` | | Optional display name |
+| `PORT` | | API port (default `4000`) |
+| `CORS_ORIGIN` | | Allowed frontend origin for local dev |
+| `BACKFILL_BATCH_SIZE` / `BACKFILL_CONCURRENCY` | | Backfill tuning |
+| `VALIDATOR_REFRESH_INTERVAL_MS` / `PARAMS_REFRESH_INTERVAL_MS` / `PROPOSAL_REFRESH_INTERVAL_MS` | | How often low-churn data is re-polled |
+| `EVM_RPC_URL` | | This chain's own EVM JSON-RPC — enables decoded EVM transaction detail and liquidity-pool indexing |
+| `EVM_EXPLORER_API_URL` | | A Blockscout-compatible explorer — enables ERC-20/NFT token holdings on account pages and a "view full trace" link |
+| `STATIC_DIR` | | Set automatically by the Docker image; not for local dev |
 
-**`apps/web/.env`**:
-
-- `VITE_API_BASE_URL` — where the frontend finds the backend (default `http://localhost:4000/api`)
+**`apps/web`** — `VITE_API_BASE_URL` (default `http://localhost:4000/api` for local dev; the Docker image bakes in `/api`, a relative path, since the container serves both API and frontend from the same origin).
 
 ## 📖 Usage
 
-1. **Start the backend** (`pnpm dev:api`) — watch the logs; it backfills from `indexerState.lastIndexedHeight` (0 on first run) to the chain's current head, then switches to live-tailing new blocks.
-2. **Start the frontend** (`pnpm dev:web`), open [http://localhost:5173](http://localhost:5173).
-3. **Explore the blockchain** — dashboard overview, search for blocks/transactions/accounts, browse validators and governance proposals. All data comes from MongoDB via the REST API, so a reload doesn't lose anything.
+1. **Start the backend** — it resumes from `indexerState.lastIndexedHeight` (0 on first run) up to the chain's current head, then switches to live-tailing new blocks. Watch the logs for backfill progress.
+2. **Start the frontend**, open [http://localhost:5173](http://localhost:5173).
+3. **Explore** — dashboard, blocks, transactions (Cosmos and EVM, with decoded detail), validators, governance, IBC transfers, liquidity pools, accounts. All data comes from MongoDB via the REST API, so reloading never loses anything.
+
+## 🐳 Deployment
+
+A single Dockerfile builds the frontend and runs the backend as one process serving both the REST API and the built frontend behind one port:
+
+```bash
+docker compose up -d --build
+```
+
+Serves on `http://localhost:85` by default (`apps/api/.env` supplies the real config via `env_file` — never baked into the image). Override the host port with `HOST_PORT=86 docker compose up -d --build` if you need a second instance alongside it.
+
+Put your own reverse proxy (with your own TLS cert) in front of it — a reference nginx config living at [`deploy/nginx/`](./deploy/nginx) shows the pattern: terminate TLS, proxy to the container's port.
 
 ## 📁 Project Structure
 
 ```
-dexplorer/                      # pnpm workspace root
+SVM-SCAN/                         # pnpm workspace root
 ├── apps/
-│   ├── api/                    # @dexplorer/api — Fastify + MongoDB indexer/REST backend
+│   ├── api/                      # @dexplorer/api — Fastify + MongoDB indexer/REST backend
 │   │   └── src/
-│   │       ├── chain/          # Tendermint RPC client/queries/subscriptions
-│   │       ├── db/             # Mongo connection, Zod schemas, indexes, seed data
-│   │       ├── indexer/        # Backfill, live tail, checkpoint, refreshers
-│   │       ├── routes/         # REST endpoints (one file per resource)
-│   │       └── plugins/        # Fastify plugins (CORS, error handling)
-│   └── web/                    # @dexplorer/web — the React/Vite frontend
-│       ├── public/             # Static assets
+│   │       ├── chain/            # Tendermint RPC + EVM JSON-RPC clients/queries
+│   │       ├── db/                # Mongo connection, Zod schemas, indexes, seed data
+│   │       ├── indexer/           # Backfill, live tail, checkpoint, refreshers, liquidity pools
+│   │       ├── routes/            # REST endpoints (one file per resource)
+│   │       └── plugins/           # Fastify plugins (CORS, error handling, static frontend serving)
+│   └── web/                      # @dexplorer/web — the React/Vite frontend
 │       └── src/
-│           ├── components/     # UI Components (AccountDetail, Home, Layout, ProposalDetail, ui)
-│           ├── hooks/          # Data-fetching hooks (useHomeData, useAccountData, etc.)
-│           ├── lib/            # apiClient and other shared libs
-│           ├── locales/        # i18n translation files
-│           ├── pages/          # Route page components
-│           ├── theme/          # Theme configuration (colors, providers)
-│           ├── utils/          # Display/formatting helpers
-│           └── main.tsx        # Application entry point
+│           ├── components/        # UI components, grouped by feature
+│           ├── hooks/             # Data-fetching hooks
+│           ├── lib/               # apiClient
+│           ├── pages/             # Route page components
+│           ├── theme/             # Theme configuration
+│           └── utils/             # Display/formatting helpers
 ├── packages/
-│   └── shared/                 # @dexplorer/shared — code identical on both sides:
-│       └── src/                #   message-type decoding registry, denom utils, API response types
-├── pnpm-workspace.yaml
-└── eslint.config.js             # Single root config, scoped per workspace by file glob
+│   └── shared/                   # @dexplorer/shared — message decoding registry, denom utils, API types
+├── deploy/
+│   └── nginx/                    # Reference reverse-proxy config
+├── Dockerfile                    # Single-container build (API serves the built frontend)
+├── docker-compose.yml
+└── pnpm-workspace.yaml
 ```
+
+## 🔌 Extending
+
+**More Cosmos SDK message types**: `packages/shared/src/encoding/msg.ts` is a `typeUrl → decoder` map. Add a new case there and both `apps/api` (indexing) and `apps/web` pick it up automatically. An unrecognized type falls back to a best-effort generic decoder (raw protobuf fields, printable strings/addresses surfaced where possible) rather than showing nothing — useful for chain-specific custom modules you don't have a `.proto` for yet.
+
+**New chain data**: add a route in `apps/api/src/routes/`, a type in `packages/shared/src/types/api.ts`, then a hook in `apps/web` — never add a direct chain call from the frontend.
 
 ## 🤝 Contributing
 
-We welcome contributions from the community! Here's how you can help:
+1. Fork the repository and clone your fork
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes — follow the existing code style, add tests, run `pnpm lint && pnpm check && pnpm test` before pushing
+4. Commit and push, then open a pull request describing your changes and linking any related issues
 
-### Development Workflow
-
-1. **Fork the Repository**
-
-   ```bash
-   # Fork on GitHub, then clone your fork
-   git clone https://github.com/YOUR_USERNAME/dexplorer.git
-   ```
-
-2. **Create a Feature Branch**
-
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-
-3. **Make Your Changes**
-   - Follow the existing code style
-   - Add tests for new features
-   - Update documentation as needed
-
-4. **Test Your Changes**
-
-   ```bash
-   pnpm test
-   pnpm build
-   ```
-
-5. **Commit and Push**
-
-   ```bash
-   git commit -m 'Add amazing feature'
-   git push origin feature/amazing-feature
-   ```
-
-6. **Create a Pull Request**
-   - Describe your changes clearly
-   - Link any related issues
-   - Wait for review and feedback
-
-### Code Style Guidelines
-
-- Use **TypeScript** for all new code
-- Follow **ESLint** and **Prettier** configurations
-- Write **descriptive commit messages**
-- Add **JSDoc comments** for complex functions
-- Ensure **responsive design** for UI changes
-
-### Reporting Issues
-
-Found a bug? Have a feature request?
-
-1. Check existing [issues](https://github.com/arifintahu/dexplorer/issues)
-2. Create a new issue with detailed description
-3. Include steps to reproduce (for bugs)
-4. Add relevant labels
-
-### Community Requests
-
-- 💡 **Your Ideas**: [Suggest features](https://github.com/arifintahu/dexplorer/issues/new?template=feature_request.md)
+Found a bug or have a feature request? Check [existing issues](https://github.com/blazeapps007/SVM-SCAN/issues) first, then open a new one with a clear description and reproduction steps.
 
 ## ❓ FAQ
 
-### General Questions
+**Q: Does this need a backend, or can it run frontend-only?**
+A: It needs the backend (`apps/api`) — that's what indexes the chain into MongoDB and serves the REST API the frontend reads from. There's no more direct-RPC-from-the-browser mode.
 
-**Q: What makes Dexplorer different from other blockchain explorers?**
-A: Dexplorer is frontend-only, requiring no backend infrastructure. It connects directly to RPC endpoints, making it perfect for development and testing environments.
+**Q: What chain does this index?**
+A: One chain, configured via `RPC_ADDRESS` in `apps/api/.env` — the Steem Virtual Machine chain by default, but any Cosmos SDK chain exposing standard Tendermint/CometBFT RPC will index and display correctly for the Cosmos-side data. EVM-side features (decoded transactions, token holdings, liquidity pools) additionally require the chain to have an EVM execution layer and JSON-RPC endpoint.
 
-**Q: Can I use Dexplorer with my local blockchain?**
-A: Yes! Simply point it to your local RPC endpoint (usually `http://localhost:26657`).
-
-**Q: Is Dexplorer compatible with all Cosmos SDK chains?**
-A: Dexplorer works with any Cosmos SDK chain that exposes standard RPC endpoints.
+**Q: Can I point it at a different chain?**
+A: Yes — set `RPC_ADDRESS` (and optionally `EVM_RPC_URL`/`EVM_EXPLORER_API_URL`) in `apps/api/.env` and let it backfill from genesis.
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v2.0** — see [`LICENSE`](./LICENSE) for the full text.
 
-```
-MIT License
+## 🙏 Acknowledgments
 
-Copyright (c) 2024 Arifin Tahu
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-```
-
-## 👥 Contributors
-
-Thanks to all the amazing people who have contributed to this project:
-
-<div align="center">
-  <a href="https://github.com/arifintahu/dexplorer/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=arifintahu/dexplorer" alt="Contributors" />
-  </a>
-</div>
-
-### Core Team
-
-- **[@arifintahu](https://github.com/arifintahu)** - Creator & Maintainer
-
-### Community Contributors
-
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/Mayne-X">
-        <img src="https://github.com/Mayne-X.png" width="80" height="80" alt="@Mayne-X" /><br />
-        <sub><b>@Mayne-X</b></sub>
-      </a>
-    </td>
-  </tr>
-</table>
-
-### How to Become a Contributor
-
-1. Fork the repository
-2. Make meaningful contributions
-3. Submit pull requests
-4. Help with issues and discussions
-5. Spread the word about SVM Scan!
+SVM Scan started as a fork of [arifintahu/dexplorer](https://github.com/arifintahu/dexplorer), a frontend-only Cosmos explorer — credit to its original author and contributors for that foundation. Since then it's diverged substantially: a persistent indexed backend, MongoDB storage, EVM transaction/token/liquidity-pool support, and a rebrand for the Steem Virtual Machine chain.
 
 ---
 
 <div align="center">
-  <p>
-    <strong>Made with ❤️ for the Cosmos ecosystem</strong>
-  </p>
-  <p>
-    <a href="#top">⬆️ Back to Top</a>
-  </p>
+  <p><a href="#top">⬆️ Back to Top</a></p>
 </div>

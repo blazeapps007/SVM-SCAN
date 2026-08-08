@@ -14,6 +14,7 @@ export const validatorSchema = z.object({
   website: z.string(),
   details: z.string(),
   status: z.string(),
+  jailed: z.boolean(),
   tokens: z.string(),
   delegatorShares: z.string(),
   commissionRate: z.string(),

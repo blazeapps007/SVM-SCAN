@@ -77,6 +77,7 @@ export interface ValidatorSummary {
   moniker: string
   identity: string
   status: string
+  jailed: boolean
   tokens: string
   bondDenom: string
   commissionRate: string
