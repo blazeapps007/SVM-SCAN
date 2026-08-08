@@ -92,29 +92,46 @@ export function registerAccountRoutes(
         return cached.data
       }
 
-      try {
-        const [account, balances, staked] = await Promise.all([
+      // Each piece is fetched independently — this chain uses a custom
+      // EVM-compatible pubkey type cosmjs doesn't recognize, so getAccount()
+      // reliably throws for EVM-derived addresses. That must not take down
+      // balances/staked (which fetch fine on their own) along with it.
+      const [accountResult, balancesResult, stakedResult] =
+        await Promise.allSettled([
           getAccount(tmClient, address),
           getAllBalances(tmClient, address),
           getBalanceStaked(tmClient, address),
         ])
 
-        const data: AccountDetailResponse = {
-          address,
-          accountNumber: account?.accountNumber?.toString() ?? '0',
-          sequence: account?.sequence?.toString() ?? '0',
-          balances: [...balances],
-          stakedBalance: staked ?? null,
-        }
-
-        accountCache.set(address, { fetchedAt: Date.now(), data })
-        return data
-      } catch (err) {
-        request.log.error(err)
+      if (balancesResult.status === 'rejected') {
+        request.log.error(balancesResult.reason)
         return reply
           .status(502)
-          .send({ error: 'Failed to fetch account from chain' })
+          .send({ error: 'Failed to fetch account balances from chain' })
       }
+
+      if (accountResult.status === 'rejected') {
+        request.log.warn(accountResult.reason)
+      }
+      if (stakedResult.status === 'rejected') {
+        request.log.warn(stakedResult.reason)
+      }
+
+      const account =
+        accountResult.status === 'fulfilled' ? accountResult.value : null
+      const staked =
+        stakedResult.status === 'fulfilled' ? stakedResult.value : null
+
+      const data: AccountDetailResponse = {
+        address,
+        accountNumber: account?.accountNumber?.toString() ?? '0',
+        sequence: account?.sequence?.toString() ?? '0',
+        balances: [...balancesResult.value],
+        stakedBalance: staked ?? null,
+      }
+
+      accountCache.set(address, { fetchedAt: Date.now(), data })
+      return data
     }
   )
 
