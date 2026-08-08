@@ -11,7 +11,7 @@ pnpm workspace monorepo — run commands from the repo root, they fan out via `p
 - Target a single workspace: `pnpm --filter @dexplorer/web <script>` / `pnpm --filter @dexplorer/api <script>` / `pnpm --filter @dexplorer/shared <script>`
 - Single test file: `pnpm --filter @dexplorer/web test src/utils/helper.test.ts`
 
-CI (`.github/workflows/ci.yml`) runs install → `pnpm -r lint/check/test/build` on every push/PR to `main`. Husky + lint-staged run `eslint --fix` and `prettier --write` on staged files at commit time (config lives at the repo root now, not per-app).
+CI (`.github/workflows/ci.yml`) runs install → `pnpm -r lint/check/test/build` on every push/PR to `main` — this is the only enforcement point; there is no local pre-commit hook (Husky + lint-staged were removed after repeatedly breaking commits from GUI git clients on Windows). Run `pnpm lint`/`pnpm check` yourself before committing.
 
 ## Project Overview
 

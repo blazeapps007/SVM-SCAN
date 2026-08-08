@@ -12,17 +12,7 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "check": "pnpm -r check",
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,css,md}": [
-      "prettier --write"
-    ]
+    "check": "pnpm -r check"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
@@ -30,8 +20,6 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.3.2",
     "prettier": "^3.8.1",
     "typescript-eslint": "^8.30.1"
   }
