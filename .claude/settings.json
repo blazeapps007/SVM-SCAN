@@ -68,7 +68,8 @@
       "Bash(python3 -c ' *)",
       "Bash(node -e \"console.log\\(require\\('./node_modules/husky/package.json'\\).version\\)\")",
       "Bash(git config *)",
-      "Bash(rm -rf .husky)"
+      "Bash(rm -rf .husky)",
+      "Bash(node scripts_tmp_decode_lp.mjs)"
     ]
   }
 }

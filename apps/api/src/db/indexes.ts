@@ -3,6 +3,7 @@ import { BLOCKS_COLLECTION } from './schemas/block.schema'
 import { TRANSACTIONS_COLLECTION } from './schemas/transaction.schema'
 import { VALIDATORS_COLLECTION } from './schemas/validator.schema'
 import { PROPOSALS_COLLECTION } from './schemas/proposal.schema'
+import { LIQUIDITY_POOLS_COLLECTION } from './schemas/liquidityPool.schema'
 
 export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection(BLOCKS_COLLECTION).createIndexes([
@@ -37,5 +38,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { id: 1 }, unique: true, name: 'id_unique' },
     { key: { status: 1 }, name: 'status' },
     { key: { votingEndTime: -1 }, name: 'voting_end_time_desc' },
+  ])
+
+  await db.collection(LIQUIDITY_POOLS_COLLECTION).createIndexes([
+    { key: { poolAddress: 1 }, unique: true, name: 'pool_address_unique' },
+    { key: { createdAt: -1 }, name: 'created_at_desc' },
   ])
 }

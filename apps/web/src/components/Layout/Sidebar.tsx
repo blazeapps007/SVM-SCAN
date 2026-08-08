@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   FiActivity,
   FiBox,
+  FiDroplet,
   FiFileText,
   FiGithub,
   FiHome,
@@ -29,6 +30,7 @@ const navigationGroups = [
       { name: 'Blocks', href: '/blocks', icon: FiBox },
       { name: 'Transactions', href: '/txs', icon: FiActivity },
       { name: 'IBC Transfers', href: '/ibc-transfers', icon: FiLink },
+      { name: 'Liquidity Pools', href: '/liquidity-pools', icon: FiDroplet },
       { name: 'Validators', href: '/validators', icon: FiUsers },
     ],
   },

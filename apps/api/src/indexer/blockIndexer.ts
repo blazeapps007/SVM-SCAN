@@ -15,6 +15,7 @@ import {
   TransactionDoc,
 } from '../db/schemas/transaction.schema'
 import { extractIBCTransfer } from './ibcTransfer'
+import { indexLiquidityPoolsForTx } from './liquidityPools'
 
 interface TxEventLike {
   type: string
@@ -86,6 +87,13 @@ export async function indexBlock(
     const events = result ? decodeEvents(result.events) : []
     const senders = getSendersFromEvents(events)
     const ibcTransfer = extractIBCTransfer(events)
+
+    await indexLiquidityPoolsForTx(
+      db,
+      messages,
+      height,
+      new Date(block.header.time)
+    )
 
     txDocs.push({
       hash,

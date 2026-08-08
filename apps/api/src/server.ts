@@ -16,6 +16,7 @@ import { registerIBCTransferRoutes } from './routes/ibcTransfers'
 import { registerParamsRoutes } from './routes/params'
 import { registerDenomRoutes } from './routes/denoms'
 import { registerEvmRoutes } from './routes/evm'
+import { registerLiquidityPoolRoutes } from './routes/liquidityPools'
 
 export interface AppContext {
   db: Db
@@ -43,6 +44,7 @@ export async function buildServer(
       registerParamsRoutes(api, context)
       registerDenomRoutes(api, context)
       registerEvmRoutes(api)
+      registerLiquidityPoolRoutes(api, context)
     },
     { prefix: '/api' }
   )

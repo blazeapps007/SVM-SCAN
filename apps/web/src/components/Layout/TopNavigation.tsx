@@ -68,6 +68,13 @@ const getPageMeta = (pathname: string) => {
     return { title: 'IBC Transfers', subtitle: 'Cross-chain token transfers' }
   }
 
+  if (pathname === '/liquidity-pools') {
+    return {
+      title: 'Liquidity Pools',
+      subtitle: 'EVM pools created on-chain',
+    }
+  }
+
   if (pathname === '/parameters') {
     return {
       title: 'Chain Parameters',

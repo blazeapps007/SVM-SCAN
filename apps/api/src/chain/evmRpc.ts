@@ -193,6 +193,49 @@ export function decodeTokenTransferLogs(
   return transfers
 }
 
+// PoolCreated(address indexed token0, address indexed token1, uint24
+// indexed fee, int24 tickSpacing, address pool) — Uniswap V3-style factory
+// event. Confirmed against a live pool creation on this chain (decoded
+// word-by-word against known token addresses/pool address from the actual
+// tx), not assumed from spec.
+const POOL_CREATED_TOPIC =
+  '0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118'
+
+export interface DecodedPoolCreated {
+  factoryAddress: string
+  token0: string
+  token1: string
+  fee: string
+  tickSpacing: string
+  poolAddress: string
+}
+
+export function decodePoolCreatedLogs(logs: EthLog[]): DecodedPoolCreated[] {
+  const pools: DecodedPoolCreated[] = []
+
+  for (const log of logs) {
+    if (log.topics[0]?.toLowerCase() !== POOL_CREATED_TOPIC) continue
+    if (log.topics.length < 4) continue
+
+    const data = log.data.startsWith('0x') ? log.data.slice(2) : log.data
+    if (data.length < 128) continue
+
+    const tickSpacingWord = data.slice(0, 64)
+    const poolAddressWord = data.slice(64, 128)
+
+    pools.push({
+      factoryAddress: log.address,
+      token0: topicToAddress(log.topics[1]),
+      token1: topicToAddress(log.topics[2]),
+      fee: BigInt(log.topics[3]).toString(),
+      tickSpacing: BigInt('0x' + tickSpacingWord).toString(),
+      poolAddress: '0x' + poolAddressWord.slice(-40),
+    })
+  }
+
+  return pools
+}
+
 // A tiny, deliberately small set of very well-known 4-byte function
 // selectors — not a general ABI/signature database, just enough to label
 // common cases instead of showing a raw hex selector. Falls back to the raw

@@ -195,6 +195,25 @@ export interface AddressTokenHolding {
   value: string
 }
 
+export interface LiquidityPoolTokenInfo {
+  address: string
+  name: string | null
+  symbol: string | null
+  decimals: string | null
+}
+
+export interface LiquidityPoolSummary {
+  poolAddress: string
+  factoryAddress: string
+  token0: LiquidityPoolTokenInfo
+  token1: LiquidityPoolTokenInfo
+  fee: string
+  tickSpacing: string
+  createdAtHeight: number
+  createdAtTxHash: string
+  createdAt: string
+}
+
 export interface ChainParamsResponse {
   staking: Record<string, unknown> | null
   mint: Record<string, unknown> | null
