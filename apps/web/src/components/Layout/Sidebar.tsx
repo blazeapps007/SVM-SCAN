@@ -83,7 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-3">
           <img
             src="/brand-mark.svg"
-            alt="Dexplorer logo"
+            alt="SVM Scan logo"
             className="h-10 w-10 shrink-0"
             style={{ filter: `drop-shadow(${colors.shadow.glow})` }}
           />
@@ -92,13 +92,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               className="truncate font-heading text-lg font-semibold"
               style={{ color: colors.text.primary }}
             >
-              Dexplorer
+              SVM Scan
             </div>
             <div
               className="text-xs font-medium"
               style={{ color: colors.text.tertiary }}
             >
-              Cosmos Explorer
+              Steem Virtual Machine Explorer
             </div>
           </div>
         </div>

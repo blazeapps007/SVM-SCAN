@@ -20,7 +20,7 @@ describe('App shell', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: "Can't reach the Dexplorer API",
+        name: "Can't reach the SVM Scan API",
       })
     ).toBeInTheDocument()
     expect(screen.getAllByText('Dashboard').length).toBeGreaterThan(0)

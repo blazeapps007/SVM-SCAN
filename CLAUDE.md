@@ -15,7 +15,7 @@ CI (`.github/workflows/ci.yml`) runs install → `pnpm -r lint/check/test/build`
 
 ## Project Overview
 
-Dexplorer is a Cosmos SDK blockchain explorer with two parts:
+SVM Scan is a Cosmos SDK blockchain explorer with two parts:
 
 - **`apps/api`** (`@dexplorer/api`) — a Fastify + MongoDB backend that indexes a chain starting from genesis: a resumable backfill walks block-by-block via Tendermint RPC, then a live subscription tails new blocks. Validators/params/proposals are refreshed on a timer (low-churn, not per-block). Serves everything over a REST API.
 - **`apps/web`** (`@dexplorer/web`) — the React/Vite frontend. It has **no direct chain connection** — it only talks to `apps/api` over HTTP/REST via TanStack Query. There is no more "connect to any RPC" flow; the backend indexes one chain, configured via its own `RPC_ADDRESS` env var.

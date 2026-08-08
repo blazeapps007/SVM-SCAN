@@ -1,5 +1,5 @@
 <div align="center">
-  <h1 align="center">🚀 Dexplorer</h1>
+  <h1 align="center">🚀 SVM Scan</h1>
 
   <p align="center">
     <strong>Disposable Cosmos-based Blockchain Explorer</strong>
@@ -54,7 +54,7 @@
 
 ## 🌟 About
 
-**Dexplorer** is a lightweight blockchain explorer for Cosmos-based blockchains. It's a pnpm monorepo with two parts: a **backend indexer** (`apps/api`) that walks a chain from genesis via Tendermint RPC and persists everything to MongoDB, and a **frontend** (`apps/web`) that reads from the backend's REST API — so data survives page reloads and history isn't limited to the last few in-memory blocks.
+**SVM Scan** is a lightweight blockchain explorer for Cosmos-based blockchains. It's a pnpm monorepo with two parts: a **backend indexer** (`apps/api`) that walks a chain from genesis via Tendermint RPC and persists everything to MongoDB, and a **frontend** (`apps/web`) that reads from the backend's REST API — so data survives page reloads and history isn't limited to the last few in-memory blocks.
 
 This makes it perfect for:
 
@@ -138,7 +138,7 @@ _Connect to any Cosmos RPC endpoint and start exploring!_
 
 ## 📋 Prerequisites
 
-Before running Dexplorer, ensure you have:
+Before running SVM Scan, ensure you have:
 
 - **Node.js** (v22.0.0 or higher)
 - **pnpm** (v8.0.0 or higher) - _Recommended package manager_
@@ -373,7 +373,7 @@ Thanks to all the amazing people who have contributed to this project:
 2. Make meaningful contributions
 3. Submit pull requests
 4. Help with issues and discussions
-5. Spread the word about Dexplorer!
+5. Spread the word about SVM Scan!
 
 ---
 

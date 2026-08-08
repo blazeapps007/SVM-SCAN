@@ -75,7 +75,7 @@ const getPageMeta = (pathname: string) => {
     }
   }
 
-  return { title: 'Dexplorer', subtitle: 'Cosmos network explorer' }
+  return { title: 'SVM Scan', subtitle: 'Steem Virtual Machine Explorer' }
 }
 
 const TopNavigation: React.FC<TopNavigationProps> = ({ onMenuClick }) => {

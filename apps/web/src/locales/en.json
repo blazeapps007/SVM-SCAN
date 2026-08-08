@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Cosmos Explorer",
+    "title": "Steem Virtual Machine Explorer",
     "search": "Search by address, block or transaction hash",
     "connect": "Connect",
     "disconnect": "Disconnect",

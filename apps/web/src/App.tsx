@@ -50,7 +50,7 @@ const ApiUnreachable: React.FC = () => {
         className="font-heading text-xl font-semibold"
         style={{ color: colors.text.primary }}
       >
-        Can't reach the Dexplorer API
+        Can't reach the SVM Scan API
       </h2>
       <p className="max-w-md text-sm" style={{ color: colors.text.tertiary }}>
         Make sure the backend is running and VITE_API_BASE_URL points to it.

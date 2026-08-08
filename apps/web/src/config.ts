@@ -17,7 +17,7 @@ const normalizeEnvValue = (value: string | undefined) => {
 }
 
 export const config = {
-  // Base URL of the Dexplorer REST API (apps/api)
+  // Base URL of the SVM Scan REST API (apps/api)
   apiBaseUrl:
     normalizeEnvValue(import.meta.env.VITE_API_BASE_URL) ||
     'http://localhost:4000/api',
