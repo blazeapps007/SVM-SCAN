@@ -152,7 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="mt-auto space-y-3 pt-4">
           <a
-            href="https://github.com/arifintahu/dexplorer"
+            href="https://github.com/blazeapps007/SVM-SCAN"
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleMobileLinkClick}
@@ -163,7 +163,21 @@ const Sidebar: React.FC<SidebarProps> = ({
             }}
           >
             <FiGithub className="h-4 w-4 shrink-0" />
-            <span>GitHub</span>
+            <span>SVM Scan (GitHub)</span>
+          </a>
+          <a
+            href="https://github.com/blazeapps007/SteemVirtualMachine-EVM"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={handleMobileLinkClick}
+            className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors"
+            style={{
+              color: colors.text.secondary,
+              border: `1px solid transparent`,
+            }}
+          >
+            <FiGithub className="h-4 w-4 shrink-0" />
+            <span>Steem Virtual Machine (GitHub)</span>
           </a>
 
           <div
