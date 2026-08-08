@@ -1,4 +1,6 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
+import { FiShield } from 'react-icons/fi'
 import { useTheme } from '@/theme/ThemeProvider'
 import type { AccountDetailResponse } from '@dexplorer/shared'
 import Avatar from '@/components/ui/Avatar'
@@ -35,6 +37,19 @@ export default function AccountHeader({
           Account #{account?.accountNumber ?? '—'} · Sequence{' '}
           {account?.sequence ?? '—'}
         </span>
+        {account?.validator && (
+          <Link
+            to={`/validators/${encodeURIComponent(account.validator.identity || account.validator.moniker)}`}
+            className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
+            style={{
+              backgroundColor: `${colors.primary}18`,
+              color: colors.primary,
+            }}
+          >
+            <FiShield className="h-3.5 w-3.5" />
+            See validator profile ({account.validator.moniker})
+          </Link>
+        )}
       </div>
     </div>
   )

@@ -9,7 +9,9 @@ import {
   TRANSACTIONS_COLLECTION,
   TransactionDoc,
 } from '../db/schemas/transaction.schema'
+import { VALIDATORS_COLLECTION, ValidatorDoc } from '../db/schemas/validator.schema'
 import { getAccount, getAllBalances, getBalanceStaked } from '../chain/query'
+import { accountToValoperAddress } from '../chain/helpers'
 import {
   parsePagination,
   paginatedResponse,
@@ -41,6 +43,7 @@ export function registerAccountRoutes(
   { db, tmClient }: AppContext
 ): void {
   const txCollection = db.collection<TransactionDoc>(TRANSACTIONS_COLLECTION)
+  const validatorCollection = db.collection<ValidatorDoc>(VALIDATORS_COLLECTION)
 
   app.get<{ Querystring: { limit?: string } }>(
     '/accounts/recent',
@@ -92,15 +95,28 @@ export function registerAccountRoutes(
         return cached.data
       }
 
+      // A validator's operator address is this same account, just
+      // re-prefixed (see accountToValoperAddress) — check whether this
+      // account happens to also be a validator, so the frontend can link
+      // to its validator profile.
+      const valoperAddress = accountToValoperAddress(address)
+      const validatorLookup = valoperAddress
+        ? validatorCollection.findOne(
+            { operatorAddress: valoperAddress },
+            { projection: { operatorAddress: 1, moniker: 1, identity: 1 } }
+          )
+        : Promise.resolve(null)
+
       // Each piece is fetched independently — this chain uses a custom
       // EVM-compatible pubkey type cosmjs doesn't recognize, so getAccount()
       // reliably throws for EVM-derived addresses. That must not take down
       // balances/staked (which fetch fine on their own) along with it.
-      const [accountResult, balancesResult, stakedResult] =
+      const [accountResult, balancesResult, stakedResult, validatorResult] =
         await Promise.allSettled([
           getAccount(tmClient, address),
           getAllBalances(tmClient, address),
           getBalanceStaked(tmClient, address),
+          validatorLookup,
         ])
 
       if (balancesResult.status === 'rejected') {
@@ -121,6 +137,8 @@ export function registerAccountRoutes(
         accountResult.status === 'fulfilled' ? accountResult.value : null
       const staked =
         stakedResult.status === 'fulfilled' ? stakedResult.value : null
+      const validatorDoc =
+        validatorResult.status === 'fulfilled' ? validatorResult.value : null
 
       const data: AccountDetailResponse = {
         address,
@@ -128,6 +146,13 @@ export function registerAccountRoutes(
         sequence: account?.sequence?.toString() ?? '0',
         balances: [...balancesResult.value],
         stakedBalance: staked ?? null,
+        validator: validatorDoc
+          ? {
+              operatorAddress: validatorDoc.operatorAddress,
+              moniker: validatorDoc.moniker,
+              identity: validatorDoc.identity,
+            }
+          : null,
       }
 
       accountCache.set(address, { fetchedAt: Date.now(), data })

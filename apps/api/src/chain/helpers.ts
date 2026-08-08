@@ -48,3 +48,16 @@ export const bech32ToEvmAddress = (address: string): string | null => {
     return null
   }
 }
+
+// A validator's operator address is the same underlying bytes as its
+// self-delegation account address, just re-prefixed with "valoper" (a
+// standard Cosmos SDK convention) — verified against a real validator on
+// this chain (blaze.apps), not assumed from spec.
+export const accountToValoperAddress = (address: string): string | null => {
+  try {
+    const { prefix, data } = fromBech32(address)
+    return toBech32(`${prefix}valoper`, data)
+  } catch {
+    return null
+  }
+}

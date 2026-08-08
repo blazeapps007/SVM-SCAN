@@ -134,12 +134,19 @@ export interface ProposalStats {
   passed: number
 }
 
+export interface AccountValidatorLink {
+  operatorAddress: string
+  moniker: string
+  identity: string
+}
+
 export interface AccountDetailResponse {
   address: string
   accountNumber: string
   sequence: string
   balances: Coin[]
   stakedBalance: Coin | null
+  validator: AccountValidatorLink | null
 }
 
 export interface RecentAccount {
