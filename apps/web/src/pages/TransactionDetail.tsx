@@ -12,12 +12,37 @@ import { formatCoinAmount } from '@dexplorer/shared'
 import { apiClient } from '@/lib/apiClient'
 import { useTheme } from '@/theme/ThemeProvider'
 import {
+  convertRateToPercent,
   getTypeMsg,
   isBech32Address,
+  parseDetailsLines,
   safeStringify,
   trimHash,
 } from '@/utils/helper'
 import { getMessageTypePillStyle, getResultPillStyle } from '@/utils/pillStyle'
+
+const VALIDATOR_MESSAGE_TYPES = new Set([
+  '/cosmos.staking.v1beta1.MsgCreateValidator',
+  '/cosmos.staking.v1beta1.MsgEditValidator',
+])
+
+interface ValidatorMessageData {
+  description?: {
+    moniker?: string
+    identity?: string
+    website?: string
+    securityContact?: string
+    details?: string
+  }
+  commission?: {
+    rate?: string
+    maxRate?: string
+    maxChangeRate?: string
+  }
+  minSelfDelegation?: string
+  validatorAddress?: string
+  value?: { denom: string; amount: string }
+}
 
 const TYPE_LABELS: Record<string, string> = {
   Transfer: 'IBC Transfer',
@@ -124,6 +149,21 @@ const TransactionDetail: React.FC = () => {
     enabled: Boolean(evmTxHash),
     retry: false,
   })
+
+  const validatorMessage = useMemo(() => {
+    const message = tx?.messages.find((m) =>
+      VALIDATOR_MESSAGE_TYPES.has(m.typeUrl)
+    )
+    return (message?.data as ValidatorMessageData | undefined) ?? null
+  }, [tx])
+
+  const validatorDetailsLines = useMemo(
+    () =>
+      validatorMessage?.description?.details
+        ? parseDetailsLines(validatorMessage.description.details)
+        : null,
+    [validatorMessage]
+  )
 
   const txMeta = useMemo(() => {
     if (!tx) return null
@@ -632,6 +672,188 @@ const TransactionDetail: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {validatorMessage && (
+        <div className="reference-table-shell rounded-[14px]">
+          <div
+            className="border-b px-5 py-[15px] text-[14px] font-semibold"
+            style={{
+              borderColor: colors.border.primary,
+              color: colors.text.primary,
+            }}
+          >
+            Validator Details
+          </div>
+
+          <div className="flex flex-col gap-[14px] px-5 py-[18px]">
+            <div className="flex flex-wrap items-center gap-[10px]">
+              {validatorMessage.description?.moniker && (
+                <span
+                  className="text-[15px] font-semibold"
+                  style={{ color: colors.text.primary }}
+                >
+                  {validatorMessage.description.moniker}
+                </span>
+              )}
+              {validatorMessage.description?.website && (
+                <a
+                  href={validatorMessage.description.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[12.5px] hover:underline"
+                  style={{ color: colors.primary }}
+                >
+                  {validatorMessage.description.website}
+                </a>
+              )}
+            </div>
+
+            {validatorDetailsLines ? (
+              <div className="flex flex-col gap-1">
+                {validatorDetailsLines.map(({ key, value }) => (
+                  <p
+                    key={key}
+                    className="break-all text-[12.5px] leading-[1.6]"
+                    style={{ color: colors.text.secondary }}
+                  >
+                    <span
+                      className="font-semibold capitalize"
+                      style={{ color: colors.text.primary }}
+                    >
+                      {key}:
+                    </span>{' '}
+                    <span className="font-mono text-[12px]">{value}</span>
+                  </p>
+                ))}
+              </div>
+            ) : (
+              validatorMessage.description?.details && (
+                <p
+                  className="text-[13px] leading-[1.55]"
+                  style={{ color: colors.text.secondary }}
+                >
+                  {validatorMessage.description.details}
+                </p>
+              )
+            )}
+
+            <div
+              className="grid gap-px overflow-hidden rounded-[11px] border sm:grid-cols-2"
+              style={{
+                backgroundColor: colors.border.primary,
+                borderColor: colors.border.primary,
+              }}
+            >
+              {validatorMessage.commission && (
+                <>
+                  <div
+                    className="flex flex-col gap-1 px-[16px] py-[12px]"
+                    style={{ backgroundColor: colors.surface }}
+                  >
+                    <span
+                      className="text-[11.5px]"
+                      style={{ color: colors.text.tertiary }}
+                    >
+                      Commission Rate
+                    </span>
+                    <span
+                      className="font-mono text-[13px]"
+                      style={{ color: colors.text.primary }}
+                    >
+                      {convertRateToPercent(validatorMessage.commission.rate) ||
+                        '—'}
+                    </span>
+                  </div>
+                  <div
+                    className="flex flex-col gap-1 px-[16px] py-[12px]"
+                    style={{ backgroundColor: colors.surface }}
+                  >
+                    <span
+                      className="text-[11.5px]"
+                      style={{ color: colors.text.tertiary }}
+                    >
+                      Max Rate / Max Change
+                    </span>
+                    <span
+                      className="font-mono text-[13px]"
+                      style={{ color: colors.text.primary }}
+                    >
+                      {convertRateToPercent(
+                        validatorMessage.commission.maxRate
+                      ) || '—'}{' '}
+                      /{' '}
+                      {convertRateToPercent(
+                        validatorMessage.commission.maxChangeRate
+                      ) || '—'}
+                    </span>
+                  </div>
+                </>
+              )}
+              {validatorMessage.minSelfDelegation && (
+                <div
+                  className="flex flex-col gap-1 px-[16px] py-[12px]"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  <span
+                    className="text-[11.5px]"
+                    style={{ color: colors.text.tertiary }}
+                  >
+                    Min Self Delegation
+                  </span>
+                  <span
+                    className="font-mono text-[13px]"
+                    style={{ color: colors.text.primary }}
+                  >
+                    {validatorMessage.minSelfDelegation}
+                  </span>
+                </div>
+              )}
+              {validatorMessage.value && (
+                <div
+                  className="flex flex-col gap-1 px-[16px] py-[12px]"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  <span
+                    className="text-[11.5px]"
+                    style={{ color: colors.text.tertiary }}
+                  >
+                    Self Bond
+                  </span>
+                  <span
+                    className="font-mono text-[13px]"
+                    style={{ color: colors.text.primary }}
+                  >
+                    {formatCoinAmount(
+                      validatorMessage.value.amount,
+                      validatorMessage.value.denom
+                    )}
+                  </span>
+                </div>
+              )}
+              {validatorMessage.validatorAddress && (
+                <div
+                  className="flex flex-col gap-1 px-[16px] py-[12px] sm:col-span-2"
+                  style={{ backgroundColor: colors.surface }}
+                >
+                  <span
+                    className="text-[11.5px]"
+                    style={{ color: colors.text.tertiary }}
+                  >
+                    Validator Address
+                  </span>
+                  <Link
+                    to={`/validators/${encodeURIComponent(validatorMessage.validatorAddress)}`}
+                    className="break-all font-mono text-[12.5px]"
+                    style={{ color: colors.primary }}
+                  >
+                    {validatorMessage.validatorAddress}
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

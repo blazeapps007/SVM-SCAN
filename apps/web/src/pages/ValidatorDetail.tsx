@@ -14,7 +14,7 @@ import { useTheme } from '@/theme/ThemeProvider'
 import { apiClient } from '@/lib/apiClient'
 import type { ValidatorDetailResponse } from '@dexplorer/shared'
 import { formatAmount, getConvertedAmount } from '@dexplorer/shared'
-import { convertRateToPercent } from '@/utils/helper'
+import { convertRateToPercent, parseDetailsLines } from '@/utils/helper'
 import ValidatorIcon from '@/components/ValidatorIcon'
 import CopyText from '@/components/ui/CopyText'
 
@@ -22,35 +22,6 @@ const formatVotingPower = (tokens: string, bondDenom: string): string => {
   if (!bondDenom) return tokens
   const { converted, base } = getConvertedAmount(tokens, bondDenom)
   return `${formatAmount(converted)} ${base.toUpperCase()}`
-}
-
-// Some chains (e.g. Steem-derived ones) pack semicolon-separated key=value
-// pairs into the validator's free-text `details` field (owner/active/posting
-// keys). Split those onto their own lines when the pattern is detected;
-// otherwise fall back to rendering `details` as plain text.
-const parseDetailsLines = (
-  details: string
-): { key: string; value: string }[] | null => {
-  if (!details.includes('=') || !details.includes(';')) return null
-
-  const parts = details
-    .split(';')
-    .map((part) => part.trim())
-    .filter(Boolean)
-
-  const pairs = parts.map((part) => {
-    const eqIndex = part.indexOf('=')
-    if (eqIndex === -1) return null
-    return {
-      key: part.slice(0, eqIndex).trim(),
-      value: part.slice(eqIndex + 1).trim(),
-    }
-  })
-
-  if (pairs.length === 0 || pairs.some((pair) => pair === null || !pair.key)) {
-    return null
-  }
-  return pairs as { key: string; value: string }[]
 }
 
 const formatUptime = (
