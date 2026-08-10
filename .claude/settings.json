@@ -72,7 +72,13 @@
       "Bash(node scripts_tmp_decode_lp.mjs)",
       "Bash(timeout 40 pnpm exec tsx scripts_tmp_reindex_lp.mjs)",
       "Bash(curl -s -o /dev/null -w \"SVM-SCAN: %{http_code}\\\\n\" https://github.com/blazeapps007/SVM-SCAN)",
-      "Bash(curl -s -o /dev/null -w \"SteemVirtualMachine-EVM: %{http_code}\\\\n\" https://github.com/blazeapps007/SteemVirtualMachine-EVM)"
+      "Bash(curl -s -o /dev/null -w \"SteemVirtualMachine-EVM: %{http_code}\\\\n\" https://github.com/blazeapps007/SteemVirtualMachine-EVM)",
+      "Bash(timeout 30 pnpm exec tsx scripts_tmp_check_jailed.mjs)",
+      "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_ibc_denom.mjs)",
+      "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_denomtrace.mjs)",
+      "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_ibc_query.mjs)",
+      "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_denom_newpath.mjs)",
+      "Bash(timeout 20 pnpm exec tsx scripts_tmp_verify_decoder.mjs)"
     ]
   }
 }

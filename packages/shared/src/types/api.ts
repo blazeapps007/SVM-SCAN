@@ -141,6 +141,17 @@ export interface AccountValidatorLink {
   identity: string
 }
 
+// The real symbol/decimals for a denom, resolved with chain access — for
+// "ibc/<hash>" denoms this requires an IBC trace query (the hash alone
+// reveals nothing), so it can't be derived client-side the way native
+// u-/a-prefixed denoms can.
+export interface ResolvedDenom {
+  baseDenom: string
+  symbol: string
+  decimals: number
+  path: string | null
+}
+
 export interface AccountDetailResponse {
   address: string
   accountNumber: string
@@ -148,6 +159,7 @@ export interface AccountDetailResponse {
   balances: Coin[]
   stakedBalance: Coin | null
   validator: AccountValidatorLink | null
+  resolvedDenoms: Record<string, ResolvedDenom>
 }
 
 export interface RecentAccount {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type {
   AccountDetailResponse,
   RecentAccount,
+  ResolvedDenom,
   TransactionSummary,
 } from '@dexplorer/shared'
 import type { AppContext } from '../server'
@@ -12,6 +13,7 @@ import {
 import { VALIDATORS_COLLECTION, ValidatorDoc } from '../db/schemas/validator.schema'
 import { getAccount, getAllBalances, getBalanceStaked } from '../chain/query'
 import { accountToValoperAddress } from '../chain/helpers'
+import { resolveDenomForDisplay } from '../indexer/denomRegistry'
 import {
   parsePagination,
   paginatedResponse,
@@ -140,6 +142,25 @@ export function registerAccountRoutes(
       const validatorDoc =
         validatorResult.status === 'fulfilled' ? validatorResult.value : null
 
+      // "ibc/<hash>" denoms reveal nothing on their own — resolve each
+      // distinct denom held (native or IBC) to its real symbol/decimals so
+      // the frontend can display e.g. "40 OSMO" instead of a raw hash.
+      const distinctDenoms = new Set<string>(
+        balancesResult.value.map((coin) => coin.denom)
+      )
+      if (staked) distinctDenoms.add(staked.denom)
+
+      const resolvedDenoms: Record<string, ResolvedDenom> = {}
+      await Promise.all(
+        [...distinctDenoms].map(async (denom) => {
+          resolvedDenoms[denom] = await resolveDenomForDisplay(
+            db,
+            tmClient,
+            denom
+          )
+        })
+      )
+
       const data: AccountDetailResponse = {
         address,
         accountNumber: account?.accountNumber?.toString() ?? '0',
@@ -153,6 +174,7 @@ export function registerAccountRoutes(
               identity: validatorDoc.identity,
             }
           : null,
+        resolvedDenoms,
       }
 
       accountCache.set(address, { fetchedAt: Date.now(), data })

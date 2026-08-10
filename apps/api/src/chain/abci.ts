@@ -37,6 +37,8 @@ import {
   QueryDenomsMetadataRequest,
   QueryDenomsMetadataResponse,
 } from 'cosmjs-types/cosmos/bank/v1beta1/query'
+import { QueryDenomTraceRequest } from 'cosmjs-types/ibc/applications/transfer/v1/query'
+import { BinaryReader } from 'cosmjs-types/binary'
 
 // Cache QueryClient instances per Tendermint37Client to avoid creating a new one for every query
 const queryClientCache = new WeakMap<Tendermint37Client, QueryClient>()
@@ -253,4 +255,74 @@ export async function queryDenomsMetadata(
     req
   )
   return QueryDenomsMetadataResponse.decode(value)
+}
+
+export interface IbcDenomInfo {
+  baseDenom: string
+  path: string
+}
+
+// ibc-go v8+ renamed the transfer module's DenomTrace query to Denom, and
+// restructured the response from DenomTrace{path, baseDenom} to
+// Denom{base, trace: repeated Hop{portId, channelId}}. cosmjs-types@0.9.0
+// only ships the old shape, so this is a minimal hand decoder for the new
+// one — verified against a live query on this chain (decoded word-by-word
+// against a known "uosmo" transfer over channel-3), not assumed from spec.
+// The request encoding is unchanged between versions (just a `hash` string
+// field), so QueryDenomTraceRequest is still used for that part.
+export async function queryIbcDenom(
+  tmClient: Tendermint37Client,
+  hash: string
+): Promise<IbcDenomInfo | null> {
+  const queryClient = getQueryClient(tmClient)
+  const req = QueryDenomTraceRequest.encode({ hash }).finish()
+  const { value } = await queryClient.queryAbci(
+    '/ibc.applications.transfer.v1.Query/Denom',
+    req
+  )
+
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  let baseDenom = ''
+  const hops: string[] = []
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    if (tag >>> 3 !== 1 || (tag & 7) !== 2) {
+      reader.skipType(tag & 7)
+      continue
+    }
+
+    const denomReader = new BinaryReader(reader.bytes())
+    const denomEnd = denomReader.len
+    while (denomReader.pos < denomEnd) {
+      const innerTag = denomReader.uint32()
+      const innerField = innerTag >>> 3
+      const innerWire = innerTag & 7
+
+      if (innerField === 1 && innerWire === 2) {
+        baseDenom = denomReader.string()
+      } else if (innerField === 3 && innerWire === 2) {
+        const hopReader = new BinaryReader(denomReader.bytes())
+        const hopEnd = hopReader.len
+        let portId = ''
+        let channelId = ''
+        while (hopReader.pos < hopEnd) {
+          const hopTag = hopReader.uint32()
+          const hopField = hopTag >>> 3
+          const hopWire = hopTag & 7
+          if (hopField === 1 && hopWire === 2) portId = hopReader.string()
+          else if (hopField === 2 && hopWire === 2)
+            channelId = hopReader.string()
+          else hopReader.skipType(hopWire)
+        }
+        hops.push(`${portId}/${channelId}`)
+      } else {
+        denomReader.skipType(innerWire)
+      }
+    }
+  }
+
+  if (!baseDenom) return null
+  return { baseDenom, path: hops.join('/') }
 }
