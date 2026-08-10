@@ -32,6 +32,7 @@ export const useAccountData = (address: string | undefined) => {
     account: account ?? null,
     balances: account?.balances ?? [],
     stakedBalance: account?.stakedBalance ?? null,
+    resolvedDenoms: account?.resolvedDenoms ?? {},
     transactions,
     totalCount: txData?.pagination.total ?? transactions.length,
     loading: isAccountLoading || isTxLoading,

@@ -1,28 +1,29 @@
 import React from 'react'
-import type { Coin } from '@dexplorer/shared'
-import {
-  formatAmount,
-  formatDenom,
-  getConvertedAmount,
-} from '@dexplorer/shared'
+import type { Coin, ResolvedDenom } from '@dexplorer/shared'
+import { formatAmount, formatDenom } from '@dexplorer/shared'
 import { useTheme } from '@/theme/ThemeProvider'
+import { convertRawAmount } from '@/utils/helper'
 
 interface NativeBalanceTableProps {
   nativeTokens: readonly Coin[]
   nativeStakedToken: Coin | null
+  resolvedDenoms: Record<string, ResolvedDenom>
 }
 
 export default function NativeBalanceTable({
   nativeTokens,
   nativeStakedToken,
+  resolvedDenoms,
 }: NativeBalanceTableProps) {
   const { colors } = useTheme()
 
   const formatBalance = (balance: Coin) => {
-    const { converted, base } = getConvertedAmount(
-      balance.amount,
-      balance.denom
-    )
+    const resolved = resolvedDenoms[balance.denom]
+    const decimals =
+      resolved?.decimals ??
+      (balance.denom.startsWith('u') ? 6 : balance.denom.startsWith('a') ? 18 : 0)
+    const symbol = resolved?.symbol ?? formatDenom(balance.denom)
+    const converted = convertRawAmount(balance.amount, decimals)
 
     return {
       amount: balance.amount,
@@ -30,11 +31,10 @@ export default function NativeBalanceTable({
       formattedAmount: formatAmount(converted),
       rawFormattedAmount: formatAmount(balance.amount),
       denom: balance.denom,
-      baseDenom: base,
-      formattedDenom: formatDenom(balance.denom),
+      baseDenom: symbol,
+      formattedDenom: symbol,
       isIBC: balance.denom.startsWith('ibc/'),
-      isConverted:
-        balance.denom.startsWith('u') || balance.denom.startsWith('a'),
+      isConverted: decimals > 0,
     }
   }
 

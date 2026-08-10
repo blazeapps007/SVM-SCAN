@@ -14,6 +14,7 @@ export default function AccountDetail() {
     account,
     balances,
     stakedBalance,
+    resolvedDenoms,
     transactions,
     totalCount,
     loading,
@@ -55,7 +56,11 @@ export default function AccountDetail() {
     <div className="flex flex-col gap-[18px]">
       {backLink}
       <AccountHeader address={address} account={account} />
-      <Balances balances={balances} stakedBalance={stakedBalance} />
+      <Balances
+        balances={balances}
+        stakedBalance={stakedBalance}
+        resolvedDenoms={resolvedDenoms}
+      />
       <EvmTokens address={address} />
       <TransactionList transactions={transactions} totalCount={totalCount} />
     </div>

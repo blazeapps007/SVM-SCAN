@@ -175,8 +175,32 @@ export const parseDetailsLines = (
   return pairs as { key: string; value: string }[]
 }
 
-// Renders a raw base-unit EVM token amount using BigInt math (amounts
-// routinely exceed Number's safe integer range, so no float division here).
+// Converts a raw base-unit amount by an arbitrary decimal count using
+// BigInt math — amounts routinely exceed Number's safe integer range, so no
+// float division here. Returns just the number (no symbol); trailing zeros
+// in the fractional part are trimmed.
+export const convertRawAmount = (rawAmount: string, decimals: number): string => {
+  try {
+    const value = BigInt(rawAmount)
+    const divisor = 10n ** BigInt(decimals)
+    const whole = value / divisor
+    const fraction = value % divisor
+    if (decimals === 0 || fraction === 0n) {
+      return whole.toString()
+    }
+    const fractionStr = fraction
+      .toString()
+      .padStart(decimals, '0')
+      .replace(/0+$/, '')
+    return fractionStr ? `${whole.toString()}.${fractionStr}` : whole.toString()
+  } catch {
+    return rawAmount
+  }
+}
+
+// Same conversion, with a "<amount> <SYMBOL>" string ready to display (used
+// for EVM token transfers, where decimals arrive as a string from the
+// chain).
 export const formatTokenAmount = (
   rawAmount: string | null,
   decimals: string | null,
@@ -186,22 +210,7 @@ export const formatTokenAmount = (
   if (!rawAmount) return `—${suffix}`
 
   const decimalsNum = decimals ? parseInt(decimals, 10) : 0
-  try {
-    const value = BigInt(rawAmount)
-    const divisor = 10n ** BigInt(decimalsNum)
-    const whole = value / divisor
-    const fraction = value % divisor
-    if (decimalsNum === 0 || fraction === 0n) {
-      return `${whole.toString()}${suffix}`
-    }
-    const fractionStr = fraction
-      .toString()
-      .padStart(decimalsNum, '0')
-      .replace(/0+$/, '')
-    return `${whole.toString()}${fractionStr ? `.${fractionStr}` : ''}${suffix}`
-  } catch {
-    return `${rawAmount}${suffix}`
-  }
+  return `${convertRawAmount(rawAmount, decimalsNum)}${suffix}`
 }
 
 // Helper function to safely serialize objects with BigInt values

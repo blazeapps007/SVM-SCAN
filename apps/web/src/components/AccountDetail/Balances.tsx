@@ -1,5 +1,5 @@
 import React from 'react'
-import type { Coin } from '@dexplorer/shared'
+import type { Coin, ResolvedDenom } from '@dexplorer/shared'
 import { useTheme } from '@/theme/ThemeProvider'
 import { FiDollarSign } from 'react-icons/fi'
 import NativeBalanceTable from './NativeBalanceTable'
@@ -8,9 +8,14 @@ import IBCBalanceTable from './IBCBalanceTable'
 interface BalancesProps {
   balances: readonly Coin[]
   stakedBalance: Coin | null
+  resolvedDenoms: Record<string, ResolvedDenom>
 }
 
-export default function Balances({ balances, stakedBalance }: BalancesProps) {
+export default function Balances({
+  balances,
+  stakedBalance,
+  resolvedDenoms,
+}: BalancesProps) {
   const { colors } = useTheme()
 
   // Separate native and IBC tokens
@@ -74,8 +79,9 @@ export default function Balances({ balances, stakedBalance }: BalancesProps) {
         <NativeBalanceTable
           nativeTokens={nativeTokens}
           nativeStakedToken={nativeStakedToken}
+          resolvedDenoms={resolvedDenoms}
         />
-        <IBCBalanceTable ibcTokens={ibcTokens} />
+        <IBCBalanceTable ibcTokens={ibcTokens} resolvedDenoms={resolvedDenoms} />
       </div>
     </div>
   )
