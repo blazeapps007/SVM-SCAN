@@ -286,6 +286,38 @@ export interface BridgeWithdrawalStats {
   netOutstandingAsteem: string
 }
 
+export interface NameRecord {
+  steemAccount: string
+  address: string
+  registrationId: string
+  linkedAt: string
+}
+
+export interface NameRegistration {
+  id: string
+  txid: string
+  opIndex: number
+  steemBlock: string
+  // May be the literal "genesis" for a genesis-seeded registration — not a
+  // parseable date, callers must handle that specially.
+  steemTimestamp: string
+  steemAccount: string
+  gatewayAccount: string
+  amountMillisteem: string
+  memo: string
+  derivedDestination: string
+  destinationType:
+    | 'DESTINATION_TYPE_NONE'
+    | 'DESTINATION_TYPE_COSMOS'
+    | 'DESTINATION_TYPE_EVM'
+  status: string
+  createdAtHeight: string
+  awaitingSinceHeight: string
+  confirmedAtHeight: string
+  confirmTxHash: string
+  validatorConfirmations: BridgeValidatorConfirmation[]
+}
+
 export interface ChainParamsResponse {
   staking: Record<string, unknown> | null
   mint: Record<string, unknown> | null

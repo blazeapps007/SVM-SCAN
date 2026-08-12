@@ -50,6 +50,33 @@ export interface RawBridgeStatistics {
   net_outstanding: string
 }
 
+export interface RawNameRecord {
+  steem_account: string
+  address: string
+  registration_id: string
+  linked_at: string
+}
+
+export interface RawNameRegistration {
+  id: string
+  txid: string
+  op_index: number
+  steem_block: string
+  steem_timestamp: string
+  steem_account: string
+  gateway_account: string
+  amount_millisteem: string
+  memo: string
+  derived_destination: string
+  destination_type: string
+  status: string
+  created_at: string
+  awaiting_since: string
+  confirmed_at: string
+  confirm_tx_hash: string
+  validator_confirmations: RawValidatorConfirmation[]
+}
+
 interface RawPagination {
   next_key: string | null
   total: string
@@ -65,12 +92,41 @@ interface WithdrawalPage {
   nextKey: string | null
 }
 
+interface NameRegistrationPage {
+  items: RawNameRegistration[]
+  nextKey: string | null
+}
+
 async function lcdGet<T>(url: string, label: string): Promise<T> {
   const response = await withTimeout(fetch(url), `steembridge:${label}`)
   if (!response.ok) {
     throw new Error(`steembridge LCD ${label} failed: HTTP ${response.status}`)
   }
   return (await response.json()) as T
+}
+
+// This LCD returns a missing record as HTTP 500 with a Cosmos SDK
+// "key not found" error body (not a 404), and an invalid address as HTTP 400
+// "invalid address" — both verified live. Both mean "no result" for a search,
+// not a real server error, so this returns null instead of throwing for
+// either shape.
+async function lcdGetOrNull<T>(url: string, label: string): Promise<T | null> {
+  const response = await withTimeout(fetch(url), `steembridge:${label}`)
+  if (response.ok) {
+    return (await response.json()) as T
+  }
+  if (response.status === 500 || response.status === 400) {
+    const body = (await response.json().catch(() => null)) as {
+      message?: string
+    } | null
+    if (
+      body?.message?.includes('key not found') ||
+      body?.message?.includes('invalid address')
+    ) {
+      return null
+    }
+  }
+  throw new Error(`steembridge LCD ${label} failed: HTTP ${response.status}`)
 }
 
 function buildPaginationQuery(opts: {
@@ -150,4 +206,88 @@ export async function fetchBridgeStatistics(
 ): Promise<RawBridgeStatistics> {
   const url = `${lcdUrl}/steemvm/steembridge/v1/bridge_statistics`
   return lcdGet<RawBridgeStatistics>(url, 'bridge_statistics')
+}
+
+// GET /steemvm/steembridge/v1/name/{steem_account} — the current active
+// link for a Steem username, if any.
+export async function resolveName(
+  lcdUrl: string,
+  steemAccount: string
+): Promise<RawNameRecord | null> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/name/${encodeURIComponent(steemAccount)}`
+  const json = await lcdGetOrNull<{ name: RawNameRecord }>(url, 'name')
+  return json?.name ?? null
+}
+
+// GET /steemvm/steembridge/v1/names_by_address/{address} — reverse lookup:
+// every active name an address owns.
+export async function fetchNamesByAddress(
+  lcdUrl: string,
+  address: string
+): Promise<RawNameRecord[]> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/names_by_address/${encodeURIComponent(address)}`
+  const json = await lcdGetOrNull<{ names: RawNameRecord[] }>(
+    url,
+    'names_by_address'
+  )
+  return json?.names ?? []
+}
+
+// GET /steemvm/steembridge/v1/name_registrations_by_account/{steem_account}
+// — full registration history (pending/awaiting/active/superseded/expired)
+// for a Steem username. This is the only way to enumerate a name's history,
+// since there's no generic "list all registrations" query.
+export async function fetchNameRegistrationsByAccount(
+  lcdUrl: string,
+  steemAccount: string
+): Promise<RawNameRegistration[]> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/name_registrations_by_account/${encodeURIComponent(steemAccount)}`
+  const json = await lcdGetOrNull<{ registrations: RawNameRegistration[] }>(
+    url,
+    'name_registrations_by_account'
+  )
+  return json?.registrations ?? []
+}
+
+// GET /steemvm/steembridge/v1/name_registration/{id} — one registration by
+// its internal id.
+export async function fetchNameRegistration(
+  lcdUrl: string,
+  id: string
+): Promise<RawNameRegistration | null> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/name_registration/${encodeURIComponent(id)}`
+  const json = await lcdGetOrNull<{ registration: RawNameRegistration }>(
+    url,
+    'name_registration'
+  )
+  return json?.registration ?? null
+}
+
+// GET /steemvm/steembridge/v1/pending_name_registrations — registrations
+// still accumulating validator attestations.
+export async function fetchPendingNameRegistrations(
+  lcdUrl: string,
+  opts: { limit: number; key?: string }
+): Promise<NameRegistrationPage> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/pending_name_registrations?${buildPaginationQuery(opts)}`
+  const json = await lcdGet<{
+    registrations: RawNameRegistration[]
+    pagination: RawPagination
+  }>(url, 'pending_name_registrations')
+  return { items: json.registrations, nextKey: json.pagination.next_key || null }
+}
+
+// GET /steemvm/steembridge/v1/awaiting_name_registrations — registrations
+// that hit the confirmation threshold and now await the destination
+// address's confirm-name tx.
+export async function fetchAwaitingNameRegistrations(
+  lcdUrl: string,
+  opts: { limit: number; key?: string }
+): Promise<NameRegistrationPage> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/awaiting_name_registrations?${buildPaginationQuery(opts)}`
+  const json = await lcdGet<{
+    registrations: RawNameRegistration[]
+    pagination: RawPagination
+  }>(url, 'awaiting_name_registrations')
+  return { items: json.registrations, nextKey: json.pagination.next_key || null }
 }

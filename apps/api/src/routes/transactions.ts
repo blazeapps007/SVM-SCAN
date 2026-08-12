@@ -20,8 +20,10 @@ import {
 } from '../utils/pagination'
 import { resolveValidatorMoniker } from '../db/validatorLookup'
 
-const MSG_SUBMIT_STEEM_DEPOSIT_TYPE_URL =
-  '/steemvm.steembridge.v1.MsgSubmitSteemDeposit'
+const ORACLE_ATTESTATION_TYPE_URLS = new Set([
+  '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
+  '/steemvm.steembridge.v1.MsgSubmitNameRegistration',
+])
 
 function toTransactionSummary(doc: TransactionDoc): TransactionSummary {
   return {
@@ -81,7 +83,7 @@ export function registerTransactionRoutes(
       const messages = await Promise.all(
         doc.messages.map(async (message) => {
           if (
-            message.typeUrl !== MSG_SUBMIT_STEEM_DEPOSIT_TYPE_URL ||
+            !ORACLE_ATTESTATION_TYPE_URLS.has(message.typeUrl) ||
             !message.data ||
             typeof message.data !== 'object'
           ) {

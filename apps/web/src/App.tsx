@@ -23,6 +23,10 @@ const BridgeDepositDetail = lazy(() => import('@/pages/BridgeDepositDetail'))
 const BridgeWithdrawalDetail = lazy(
   () => import('@/pages/BridgeWithdrawalDetail')
 )
+const SVMNS = lazy(() => import('@/pages/SVMNS'))
+const SVMNSRegistrationDetail = lazy(
+  () => import('@/pages/SVMNSRegistrationDetail')
+)
 const Proposals = lazy(() => import('@/pages/Proposals'))
 const Accounts = lazy(() => import('@/pages/Accounts'))
 const Parameters = lazy(() => import('@/pages/Parameters'))
@@ -108,6 +112,11 @@ function AppContent() {
             <Route
               path="/bridge/withdrawals/:id"
               element={<BridgeWithdrawalDetail />}
+            />
+            <Route path="/svmns" element={<SVMNS />} />
+            <Route
+              path="/svmns/registrations/:id"
+              element={<SVMNSRegistrationDetail />}
             />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/accounts/:address" element={<AccountDetail />} />

@@ -99,6 +99,7 @@ const TYPE = {
   MsgEthereumTx: '/cosmos.evm.vm.v1.MsgEthereumTx',
   MsgSubmitSteemDeposit: '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
   MsgBridgeOut: '/steemvm.steembridge.v1.MsgBridgeOut',
+  MsgSubmitNameRegistration: '/steemvm.steembridge.v1.MsgSubmitNameRegistration',
 }
 
 export interface DecodeMsg {
@@ -274,6 +275,83 @@ const decodeMsgBridgeOut = (value: Uint8Array): MsgBridgeOutFields => {
     sender: fields.sender ?? '',
     destinationSteemAccount: fields.destinationSteemAccount ?? '',
     amountAsteem: fields.amountAsteem ?? '0',
+    memo: fields.memo ?? '',
+  }
+}
+
+// MsgSubmitNameRegistration (steemvm.steembridge.v1) — an oracle validator
+// attesting to a Steem-name registration request. Identical field layout to
+// MsgSubmitSteemDeposit (verified by hand-walking a real tx's protobuf
+// bytes), just field 6 is the Steem account being registered rather than a
+// deposit sender:
+//   1 validator, 2 txid, 3 op_index, 4 steem_block, 5 steem_timestamp,
+//   6 steem_account, 7 gateway_account, 8 amount_millisteem, 9 memo
+interface MsgSubmitNameRegistrationFields {
+  validator: string
+  txid: string
+  opIndex: number
+  steemBlock: string
+  steemTimestamp: string
+  steemAccount: string
+  gatewayAccount: string
+  amountMillisteem: string
+  memo: string
+}
+
+const decodeMsgSubmitNameRegistration = (
+  value: Uint8Array
+): MsgSubmitNameRegistrationFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgSubmitNameRegistrationFields> = { opIndex: 0 }
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.validator = reader.string()
+        break
+      case 2:
+        fields.txid = reader.string()
+        break
+      case 3:
+        fields.opIndex = reader.uint32()
+        break
+      case 4:
+        fields.steemBlock = reader.uint64().toString()
+        break
+      case 5:
+        fields.steemTimestamp = reader.string()
+        break
+      case 6:
+        fields.steemAccount = reader.string()
+        break
+      case 7:
+        fields.gatewayAccount = reader.string()
+        break
+      case 8:
+        fields.amountMillisteem = reader.uint64().toString()
+        break
+      case 9:
+        fields.memo = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    validator: fields.validator ?? '',
+    txid: fields.txid ?? '',
+    opIndex: fields.opIndex ?? 0,
+    steemBlock: fields.steemBlock ?? '0',
+    steemTimestamp: fields.steemTimestamp ?? '',
+    steemAccount: fields.steemAccount ?? '',
+    gatewayAccount: fields.gatewayAccount ?? '',
+    amountMillisteem: fields.amountMillisteem ?? '0',
     memo: fields.memo ?? '',
   }
 }
@@ -470,6 +548,9 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgBridgeOut:
       data = decodeMsgBridgeOut(value)
+      break
+    case TYPE.MsgSubmitNameRegistration:
+      data = decodeMsgSubmitNameRegistration(value)
       break
     default:
       data = decodeUnknownMessage(value)

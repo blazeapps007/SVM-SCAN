@@ -51,6 +51,7 @@ const TYPE_LABELS: Record<string, string> = {
   Acknowledgement: 'IBC Acknowledge',
   SubmitSteemDeposit: 'Submit Steem Deposit',
   BridgeOut: 'Bridge Out (Withdrawal)',
+  SubmitNameRegistration: 'Submit Name Registration',
   Timeout: 'IBC Timeout',
   WithdrawDelegatorReward: 'Withdraw Reward',
   Undelegate: 'Begin Unbonding',

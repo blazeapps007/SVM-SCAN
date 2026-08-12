@@ -5,6 +5,7 @@ import { useTheme } from '@/theme/ThemeProvider'
 import { cn } from '@/lib/utils'
 import {
   FiActivity,
+  FiAtSign,
   FiBox,
   FiDroplet,
   FiFileText,
@@ -41,6 +42,7 @@ const navigationGroups = [
     items: [
       { name: 'Proposals', href: '/proposals', icon: FiFileText },
       { name: 'Accounts', href: '/accounts', icon: FiUser },
+      { name: 'SVMNS', href: '/svmns', icon: FiAtSign },
       { name: 'Parameters', href: '/parameters', icon: FiSettings },
     ],
   },
