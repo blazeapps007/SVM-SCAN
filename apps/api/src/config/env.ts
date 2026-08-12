@@ -44,6 +44,16 @@ const envSchema = z.object({
   // Optional: base URL of a Blockscout-compatible EVM explorer, used only to
   // build a "view full trace" deep link — not a data source.
   EVM_EXPLORER_API_URL: z.string().optional(),
+  // Optional: this chain's LCD/REST (port 1317) base URL, used to poll the
+  // custom steembridge module (Steem/SBD deposit oracle attestations) — no
+  // generated proto or ABCI query path exists for this module, so it's
+  // queried over REST instead. Feature is simply unavailable when unset.
+  STEEMBRIDGE_LCD_URL: z.string().optional(),
+  BRIDGE_DEPOSIT_REFRESH_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30000),
   // Optional: absolute path to a built apps/web static bundle (index.html +
   // assets). When set, the API server also serves the frontend from this
   // directory (with an SPA fallback to index.html) so the whole app can run

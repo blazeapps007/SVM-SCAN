@@ -227,6 +227,45 @@ export interface LiquidityPoolSummary {
   createdAt: string
 }
 
+export interface BridgeValidatorConfirmation {
+  validatorAddress: string
+  moniker: string | null
+  timestamp: string
+}
+
+export interface BridgeDeposit {
+  id: string
+  txid: string
+  opIndex: number
+  steemBlock: string
+  steemTimestamp: string
+  steemSender: string
+  gatewayAccount: string
+  amountMillisteem: string
+  memo: string
+  derivedDestination: string
+  destinationType:
+    | 'DESTINATION_TYPE_NONE'
+    | 'DESTINATION_TYPE_COSMOS'
+    | 'DESTINATION_TYPE_EVM'
+  status:
+    | 'DEPOSIT_STATUS_PENDING'
+    | 'DEPOSIT_STATUS_MINTED'
+    | 'DEPOSIT_STATUS_UNCLAIMABLE'
+  minted: boolean
+  mintedAt: string
+  mintTxHash: string
+  createdAtHeight: string
+  validatorConfirmations: BridgeValidatorConfirmation[]
+}
+
+export interface BridgeDepositStats {
+  pending: number
+  minted: number
+  unclaimable: number
+  total: number
+}
+
 export interface ChainParamsResponse {
   staking: Record<string, unknown> | null
   mint: Record<string, unknown> | null

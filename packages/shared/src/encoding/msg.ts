@@ -97,6 +97,7 @@ const TYPE = {
   MsgTransfer: '/ibc.applications.transfer.v1.MsgTransfer',
   MsgSoftwareUpgrade: '/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade',
   MsgEthereumTx: '/cosmos.evm.vm.v1.MsgEthereumTx',
+  MsgSubmitSteemDeposit: '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
 }
 
 export interface DecodeMsg {
@@ -142,6 +143,89 @@ const decodeMsgEthereumTx = (value: Uint8Array): MsgEthereumTxFields => {
   return {
     from: fromBytes ? `0x${toHex(fromBytes)}` : '',
     hash: rawTxBytes ? `0x${toHex(new Keccak256(rawTxBytes).digest())}` : '',
+  }
+}
+
+// MsgSubmitSteemDeposit (steemvm.steembridge.v1) — an oracle validator
+// attesting to a Steem-side deposit. No proto is available for this custom
+// module, so the field numbers/wire types below were verified by hand
+// (walking the raw protobuf bytes of a real tx) rather than assumed:
+//   1 validator (string, bech32 account address of the oracle)
+//   2 txid (string, Steem txid)
+//   3 op_index (varint uint32 — proto3 omits this on the wire when 0)
+//   4 steem_block (varint uint64)
+//   5 steem_timestamp (string)
+//   6 steem_sender (string)
+//   7 gateway_account (string)
+//   8 amount_millisteem (varint uint64)
+//   9 memo (string)
+interface MsgSubmitSteemDepositFields {
+  validator: string
+  txid: string
+  opIndex: number
+  steemBlock: string
+  steemTimestamp: string
+  steemSender: string
+  gatewayAccount: string
+  amountMillisteem: string
+  memo: string
+}
+
+const decodeMsgSubmitSteemDeposit = (
+  value: Uint8Array
+): MsgSubmitSteemDepositFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgSubmitSteemDepositFields> = { opIndex: 0 }
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.validator = reader.string()
+        break
+      case 2:
+        fields.txid = reader.string()
+        break
+      case 3:
+        fields.opIndex = reader.uint32()
+        break
+      case 4:
+        fields.steemBlock = reader.uint64().toString()
+        break
+      case 5:
+        fields.steemTimestamp = reader.string()
+        break
+      case 6:
+        fields.steemSender = reader.string()
+        break
+      case 7:
+        fields.gatewayAccount = reader.string()
+        break
+      case 8:
+        fields.amountMillisteem = reader.uint64().toString()
+        break
+      case 9:
+        fields.memo = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    validator: fields.validator ?? '',
+    txid: fields.txid ?? '',
+    opIndex: fields.opIndex ?? 0,
+    steemBlock: fields.steemBlock ?? '0',
+    steemTimestamp: fields.steemTimestamp ?? '',
+    steemSender: fields.steemSender ?? '',
+    gatewayAccount: fields.gatewayAccount ?? '',
+    amountMillisteem: fields.amountMillisteem ?? '0',
+    memo: fields.memo ?? '',
   }
 }
 
@@ -331,6 +415,9 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgEthereumTx:
       data = decodeMsgEthereumTx(value)
+      break
+    case TYPE.MsgSubmitSteemDeposit:
+      data = decodeMsgSubmitSteemDeposit(value)
       break
     default:
       data = decodeUnknownMessage(value)

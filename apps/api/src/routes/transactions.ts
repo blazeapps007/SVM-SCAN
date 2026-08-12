@@ -18,6 +18,10 @@ import {
   paginatedResponse,
   type PageQuery,
 } from '../utils/pagination'
+import { resolveValidatorMoniker } from '../db/validatorLookup'
+
+const MSG_SUBMIT_STEEM_DEPOSIT_TYPE_URL =
+  '/steemvm.steembridge.v1.MsgSubmitSteemDeposit'
 
 function toTransactionSummary(doc: TransactionDoc): TransactionSummary {
   return {
@@ -74,12 +78,32 @@ export function registerTransactionRoutes(
         .collection<IndexerStateDoc>(INDEXER_STATE_COLLECTION)
         .findOne({ _id: INDEXER_STATE_ID })
 
+      const messages = await Promise.all(
+        doc.messages.map(async (message) => {
+          if (
+            message.typeUrl !== MSG_SUBMIT_STEEM_DEPOSIT_TYPE_URL ||
+            !message.data ||
+            typeof message.data !== 'object'
+          ) {
+            return message
+          }
+          const data = message.data as { validator?: string }
+          const oracleMoniker = data.validator
+            ? await resolveValidatorMoniker(db, data.validator)
+            : null
+          return {
+            ...message,
+            data: { ...data, oracleMoniker },
+          }
+        })
+      )
+
       const response: TransactionDetailResponse = {
         ...toTransactionSummary(doc),
         log: doc.log,
         memo: doc.memo,
         chainId: state?.chainId ?? '',
-        messages: doc.messages as TransactionDetailResponse['messages'],
+        messages: messages as TransactionDetailResponse['messages'],
         events: doc.events,
         senders: doc.senders,
         ibcTransfer: doc.ibcTransfer,

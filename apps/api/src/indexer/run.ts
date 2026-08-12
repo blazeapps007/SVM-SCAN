@@ -11,9 +11,11 @@ import { startLiveTail } from './liveTail'
 import { refreshValidators } from './validatorRefresh'
 import { refreshParams } from './paramsRefresh'
 import { refreshProposals } from './proposalRefresh'
+import { refreshBridgeDeposits } from './bridgeDepositRefresh'
 
 export interface IndexerHandle {
   tmClient: Tendermint37Client
+  rpcAddress: string
 }
 
 // Fast path: just enough to let the API server start accepting requests
@@ -28,7 +30,7 @@ export async function connectIndexer(db: Db): Promise<IndexerHandle> {
     env.RPC_ADDRESS_BACKUP_2,
   ].filter((url): url is string => Boolean(url))
 
-  const tmClient = await connectWithFailover(rpcCandidates)
+  const { tmClient, rpcAddress } = await connectWithFailover(rpcCandidates)
   await ensureIndexes(db)
 
   const status = await getNetworkStatus(tmClient)
@@ -37,7 +39,7 @@ export async function connectIndexer(db: Db): Promise<IndexerHandle> {
     await updateCheckpoint(db, { chainId: status.chainId })
   }
 
-  return { tmClient }
+  return { tmClient, rpcAddress }
 }
 
 // Slow path: backfill from genesis (or wherever the last run left off) to
@@ -59,6 +61,9 @@ export async function runIndexer(
   )
   await refreshProposals(db, tmClient).catch((err) =>
     console.error('Initial proposal refresh failed:', err)
+  )
+  await refreshBridgeDeposits(db).catch((err) =>
+    console.error('Initial bridge deposit refresh failed:', err)
   )
 
   const status = await getNetworkStatus(tmClient)
@@ -89,4 +94,10 @@ export async function runIndexer(
       console.error('Proposal refresh failed:', err)
     )
   }, env.PROPOSAL_REFRESH_INTERVAL_MS)
+
+  setInterval(() => {
+    refreshBridgeDeposits(db).catch((err) =>
+      console.error('Bridge deposit refresh failed:', err)
+    )
+  }, env.BRIDGE_DEPOSIT_REFRESH_INTERVAL_MS)
 }

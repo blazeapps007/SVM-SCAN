@@ -1,6 +1,7 @@
 import { Tendermint37Client, WebsocketClient } from '@cosmjs/tendermint-rpc'
 import { StreamingSocket } from '@cosmjs/socket'
 import { replaceHTTPtoWebsocket, isValidUrl } from './helpers'
+import { withTimeout } from './withTimeout'
 
 export async function validateConnection(rpcAddress: string): Promise<boolean> {
   if (!isValidUrl(rpcAddress)) {
@@ -40,19 +41,26 @@ export async function validateConnection(rpcAddress: string): Promise<boolean> {
   })
 }
 
+export interface ConnectedClient {
+  tmClient: Tendermint37Client
+  rpcAddress: string
+}
+
 // Tries each RPC address in order, returning the first one that connects
-// successfully. Used at (re)connect time — e.g. on a fresh process start
-// after a crash-restart — so a persistently-down primary node doesn't
-// permanently block the indexer if a backup is configured and healthy.
+// successfully (and which address that was — callers shouldn't assume it's
+// always RPC_ADDRESS once a backup has been used). Used at (re)connect time
+// — e.g. on a fresh process start after a crash-restart — so a
+// persistently-down primary node doesn't permanently block the indexer if a
+// backup is configured and healthy.
 export async function connectWithFailover(
   rpcAddresses: readonly string[]
-): Promise<Tendermint37Client> {
+): Promise<ConnectedClient> {
   let lastError: unknown
 
   for (const rpcAddress of rpcAddresses) {
     try {
-      const client = await connectWebsocketClient(rpcAddress)
-      return client
+      const tmClient = await connectWebsocketClient(rpcAddress)
+      return { tmClient, rpcAddress }
     } catch (err) {
       lastError = err
       console.error(`Failed to connect to RPC node ${rpcAddress}:`, err)
@@ -72,6 +80,15 @@ export async function connectWebsocketClient(
     throw new Error('Invalid RPC URL format')
   }
 
+  // The initial handshake + status() check isn't covered by the per-query
+  // timeout in chain/query.ts (this runs before any of that exists) — a
+  // hang here would otherwise block the whole process from ever starting.
+  return withTimeout(connectWebsocketClientInner(rpcAddress), `connect(${rpcAddress})`)
+}
+
+async function connectWebsocketClientInner(
+  rpcAddress: string
+): Promise<Tendermint37Client> {
   return new Promise((resolve, reject) => {
     try {
       const wsUrl = replaceHTTPtoWebsocket(rpcAddress)

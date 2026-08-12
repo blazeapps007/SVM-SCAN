@@ -7,8 +7,8 @@ async function main(): Promise<void> {
   const db = await connectMongo()
   console.log('Connected to MongoDB')
 
-  const { tmClient } = await connectIndexer(db)
-  console.log(`Connected to chain RPC at ${env.RPC_ADDRESS}`)
+  const { tmClient, rpcAddress } = await connectIndexer(db)
+  console.log(`Connected to chain RPC at ${rpcAddress}`)
 
   const app = await buildServer({ db, tmClient })
   await app.listen({ port: env.PORT, host: '0.0.0.0' })

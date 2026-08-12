@@ -18,6 +18,8 @@ const ValidatorDetail = lazy(() => import('@/pages/ValidatorDetail'))
 const Transactions = lazy(() => import('@/pages/Transactions'))
 const IBCTransfers = lazy(() => import('@/pages/IBCTransfers'))
 const LiquidityPools = lazy(() => import('@/pages/LiquidityPools'))
+const BridgeDeposits = lazy(() => import('@/pages/BridgeDeposits'))
+const BridgeDepositDetail = lazy(() => import('@/pages/BridgeDepositDetail'))
 const Proposals = lazy(() => import('@/pages/Proposals'))
 const Accounts = lazy(() => import('@/pages/Accounts'))
 const Parameters = lazy(() => import('@/pages/Parameters'))
@@ -95,6 +97,11 @@ function AppContent() {
             <Route path="/txs/:hash" element={<TransactionDetail />} />
             <Route path="/ibc-transfers" element={<IBCTransfers />} />
             <Route path="/liquidity-pools" element={<LiquidityPools />} />
+            <Route path="/bridge-deposits" element={<BridgeDeposits />} />
+            <Route
+              path="/bridge-deposits/:id"
+              element={<BridgeDepositDetail />}
+            />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/accounts/:address" element={<AccountDetail />} />
             <Route path="/parameters" element={<Parameters />} />
