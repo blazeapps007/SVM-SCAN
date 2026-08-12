@@ -266,6 +266,26 @@ export interface BridgeDepositStats {
   total: number
 }
 
+export interface BridgeWithdrawal {
+  id: string
+  sender: string
+  destinationSteemAccount: string
+  amountAsteem: string
+  amountMillisteem: string
+  memo: string
+  burnTxHash: string
+  status: 'WITHDRAWAL_STATUS_REQUESTED'
+  createdAtHeight: string
+}
+
+export interface BridgeWithdrawalStats {
+  total: number
+  requested: number
+  totalMintedAsteem: string
+  totalBurnedAsteem: string
+  netOutstandingAsteem: string
+}
+
 export interface ChainParamsResponse {
   staking: Record<string, unknown> | null
   mint: Record<string, unknown> | null

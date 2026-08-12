@@ -32,6 +32,24 @@ export interface RawSteemBridgeDeposit {
   validator_confirmations: RawValidatorConfirmation[]
 }
 
+export interface RawSteemBridgeWithdrawal {
+  id: string
+  sender: string
+  destination_steem_account: string
+  amount_asteem: string
+  amount_millisteem: string
+  memo: string
+  burn_tx_hash: string
+  status: string
+  created_at: string
+}
+
+export interface RawBridgeStatistics {
+  total_minted_asteem: string
+  total_burned_asteem: string
+  net_outstanding: string
+}
+
 interface RawPagination {
   next_key: string | null
   total: string
@@ -39,6 +57,11 @@ interface RawPagination {
 
 interface DepositPage {
   items: RawSteemBridgeDeposit[]
+  nextKey: string | null
+}
+
+interface WithdrawalPage {
+  items: RawSteemBridgeWithdrawal[]
   nextKey: string | null
 }
 
@@ -90,4 +113,41 @@ export async function fetchPendingDeposits(
     pagination: RawPagination
   }>(url, 'pending_deposits')
   return { items: json.deposits, nextKey: json.pagination.next_key || null }
+}
+
+// GET /steemvm/steembridge/v1/withdrawal — the unfiltered full list. Same
+// singular-key-for-a-list-endpoint quirk as /deposit, verified live.
+export async function fetchWithdrawals(
+  lcdUrl: string,
+  opts: { limit: number; reverse?: boolean; key?: string }
+): Promise<WithdrawalPage> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/withdrawal?${buildPaginationQuery(opts)}`
+  const json = await lcdGet<{
+    withdrawal: RawSteemBridgeWithdrawal[]
+    pagination: RawPagination
+  }>(url, 'withdrawal')
+  return { items: json.withdrawal, nextKey: json.pagination.next_key || null }
+}
+
+// GET /steemvm/steembridge/v1/requested_withdrawals — only withdrawals still
+// awaiting payout (currently the only status that exists). Plural key.
+export async function fetchRequestedWithdrawals(
+  lcdUrl: string,
+  opts: { limit: number; key?: string }
+): Promise<WithdrawalPage> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/requested_withdrawals?${buildPaginationQuery(opts)}`
+  const json = await lcdGet<{
+    withdrawals: RawSteemBridgeWithdrawal[]
+    pagination: RawPagination
+  }>(url, 'requested_withdrawals')
+  return { items: json.withdrawals, nextKey: json.pagination.next_key || null }
+}
+
+// GET /steemvm/steembridge/v1/bridge_statistics — chain-wide totals, no
+// pagination, single object.
+export async function fetchBridgeStatistics(
+  lcdUrl: string
+): Promise<RawBridgeStatistics> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/bridge_statistics`
+  return lcdGet<RawBridgeStatistics>(url, 'bridge_statistics')
 }

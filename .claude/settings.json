@@ -80,7 +80,17 @@
       "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_denom_newpath.mjs)",
       "Bash(timeout 20 pnpm exec tsx scripts_tmp_verify_decoder.mjs)",
       "Bash(curl -s -m 10 -o /dev/null -w \"svmscan.blazeapps.org: %{http_code}\\\\n\" https://svmscan.blazeapps.org/api/health)",
-      "Bash(curl -s -m 10 https://svmscan.blazeapps.org/api/accounts/steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu)"
+      "Bash(curl -s -m 10 https://svmscan.blazeapps.org/api/accounts/steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu)",
+      "Bash(curl -s -m 10 \"http://localhost:4000/api/health\")",
+      "Bash(curl -s -m 10 \"http://localhost:4000/api/bridge-deposits/stats\")",
+      "Bash(curl -s -m 10 \"http://localhost:4000/api/bridge-deposits?perPage=2&status=pending\")",
+      "Bash(curl -s -m 10 \"http://localhost:4000/api/bridge-deposits/9be06037c04bcdfa61de6a701dbe2220e2f1ec1a\")",
+      "Bash(curl -s -m 10 \"http://localhost:4000/api/transactions/C05E4276B2B53C907E600335B67C3AD7F6A5BA028B87F841D7D65AB542DB5A0F\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(JSON.stringify\\(j.messages,null,2\\)\\)}\\)\")",
+      "Bash(curl -s -m 10 \"http://localhost:4000/api/transactions?perPage=1\")",
+      "Bash(node redecode-steem-deposits.mjs)",
+      "Bash(pnpm exec *)",
+      "Bash(node \"C:\\\\Users\\\\ghimi\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\a--SVM-SCAN\\\\837a4181-2fe9-4901-ba6a-9e0dc067d34c\\\\scratchpad\\\\check-progress.mjs\")"
     ]
   }
 }

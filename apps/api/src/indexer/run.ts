@@ -12,6 +12,7 @@ import { refreshValidators } from './validatorRefresh'
 import { refreshParams } from './paramsRefresh'
 import { refreshProposals } from './proposalRefresh'
 import { refreshBridgeDeposits } from './bridgeDepositRefresh'
+import { refreshBridgeWithdrawals } from './bridgeWithdrawalRefresh'
 
 export interface IndexerHandle {
   tmClient: Tendermint37Client
@@ -65,6 +66,9 @@ export async function runIndexer(
   await refreshBridgeDeposits(db).catch((err) =>
     console.error('Initial bridge deposit refresh failed:', err)
   )
+  await refreshBridgeWithdrawals(db).catch((err) =>
+    console.error('Initial bridge withdrawal refresh failed:', err)
+  )
 
   const status = await getNetworkStatus(tmClient)
   const state = await getOrCreateIndexerState(db, status.chainId)
@@ -98,6 +102,16 @@ export async function runIndexer(
   setInterval(() => {
     refreshBridgeDeposits(db).catch((err) =>
       console.error('Bridge deposit refresh failed:', err)
+    )
+  }, env.BRIDGE_DEPOSIT_REFRESH_INTERVAL_MS)
+
+  // Reuses the same interval as deposits — it governs "steembridge module
+  // polling" generally, not deposits specifically. Withdrawals are a tiny,
+  // slow-growing dataset (a handful of records), so a dedicated env var
+  // would be premature.
+  setInterval(() => {
+    refreshBridgeWithdrawals(db).catch((err) =>
+      console.error('Bridge withdrawal refresh failed:', err)
     )
   }, env.BRIDGE_DEPOSIT_REFRESH_INTERVAL_MS)
 }

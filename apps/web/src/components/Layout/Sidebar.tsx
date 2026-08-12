@@ -32,7 +32,7 @@ const navigationGroups = [
       { name: 'Transactions', href: '/txs', icon: FiActivity },
       { name: 'IBC Transfers', href: '/ibc-transfers', icon: FiLink },
       { name: 'Liquidity Pools', href: '/liquidity-pools', icon: FiDroplet },
-      { name: 'Bridge Deposits', href: '/bridge-deposits', icon: FiRepeat },
+      { name: 'Bridge', href: '/bridge', icon: FiRepeat },
       { name: 'Validators', href: '/validators', icon: FiUsers },
     ],
   },

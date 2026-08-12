@@ -98,6 +98,7 @@ const TYPE = {
   MsgSoftwareUpgrade: '/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade',
   MsgEthereumTx: '/cosmos.evm.vm.v1.MsgEthereumTx',
   MsgSubmitSteemDeposit: '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
+  MsgBridgeOut: '/steemvm.steembridge.v1.MsgBridgeOut',
 }
 
 export interface DecodeMsg {
@@ -225,6 +226,54 @@ const decodeMsgSubmitSteemDeposit = (
     steemSender: fields.steemSender ?? '',
     gatewayAccount: fields.gatewayAccount ?? '',
     amountMillisteem: fields.amountMillisteem ?? '0',
+    memo: fields.memo ?? '',
+  }
+}
+
+// MsgBridgeOut (steemvm.steembridge.v1) — a user burning asteem to withdraw
+// back to Steem ("bridge-out"). No proto available; field numbers verified
+// by hand-walking the raw protobuf bytes of a real tx, same method as
+// MsgSubmitSteemDeposit. All fields are plain strings:
+//   1 sender, 2 destination_steem_account, 3 amount_asteem, 4 memo
+interface MsgBridgeOutFields {
+  sender: string
+  destinationSteemAccount: string
+  amountAsteem: string
+  memo: string
+}
+
+const decodeMsgBridgeOut = (value: Uint8Array): MsgBridgeOutFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgBridgeOutFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.sender = reader.string()
+        break
+      case 2:
+        fields.destinationSteemAccount = reader.string()
+        break
+      case 3:
+        fields.amountAsteem = reader.string()
+        break
+      case 4:
+        fields.memo = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    sender: fields.sender ?? '',
+    destinationSteemAccount: fields.destinationSteemAccount ?? '',
+    amountAsteem: fields.amountAsteem ?? '0',
     memo: fields.memo ?? '',
   }
 }
@@ -418,6 +467,9 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgSubmitSteemDeposit:
       data = decodeMsgSubmitSteemDeposit(value)
+      break
+    case TYPE.MsgBridgeOut:
+      data = decodeMsgBridgeOut(value)
       break
     default:
       data = decodeUnknownMessage(value)

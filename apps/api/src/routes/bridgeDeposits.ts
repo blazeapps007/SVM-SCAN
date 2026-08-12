@@ -18,6 +18,15 @@ const STATUS_FILTER_MAP: Record<string, string> = {
   unclaimable: 'DEPOSIT_STATUS_UNCLAIMABLE',
 }
 
+// The Steem chain's LCD returns steem_timestamp with no timezone designator
+// (e.g. "2026-08-12T00:31:36") even though it's UTC — parsed as-is by
+// JS/dayjs that reads as local time, throwing off every "time ago" display
+// by the visitor's UTC offset. Normalize once here rather than at every
+// display call site.
+function toUtcIsoString(raw: string): string {
+  return /[Zz]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`
+}
+
 function toDeposit(
   doc: BridgeDepositDoc,
   monikers: Map<string, string>
@@ -27,7 +36,7 @@ function toDeposit(
     txid: doc.txid,
     opIndex: doc.opIndex,
     steemBlock: doc.steemBlock,
-    steemTimestamp: doc.steemTimestamp,
+    steemTimestamp: toUtcIsoString(doc.steemTimestamp),
     steemSender: doc.steemSender,
     gatewayAccount: doc.gatewayAccount,
     amountMillisteem: doc.amountMillisteem,

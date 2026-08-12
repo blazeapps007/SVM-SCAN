@@ -1,75 +1,39 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FiRepeat } from 'react-icons/fi'
-import type { BridgeDeposit } from '@dexplorer/shared'
 import { useTheme } from '@/theme/ThemeProvider'
-import { trimHash, timeFromNow, convertRawAmount } from '@/utils/helper'
+import { trimHash, convertRawAmount } from '@/utils/helper'
+import type { BridgeWithdrawal } from '@dexplorer/shared'
 import {
-  useBridgeDeposits,
-  useBridgeDepositStats,
-  type BridgeDepositStatusFilter,
-} from '@/hooks/useBridgeDeposits'
-import { ThemeColors } from '@/theme/colors'
+  useBridgeWithdrawals,
+  useBridgeWithdrawalStats,
+  type BridgeWithdrawalStatusFilter,
+} from '@/hooks/useBridgeWithdrawals'
 
-const STATUS_TABS: { label: string; value: BridgeDepositStatusFilter }[] = [
+const STATUS_TABS: { label: string; value: BridgeWithdrawalStatusFilter }[] = [
   { label: 'All', value: 'all' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Minted', value: 'minted' },
-  { label: 'Unclaimable', value: 'unclaimable' },
+  { label: 'Requested', value: 'requested' },
 ]
 
-const STATUS_LABELS: Record<BridgeDeposit['status'], string> = {
-  DEPOSIT_STATUS_PENDING: 'Pending',
-  DEPOSIT_STATUS_MINTED: 'Minted',
-  DEPOSIT_STATUS_UNCLAIMABLE: 'Unclaimable',
+const STATUS_LABELS: Record<BridgeWithdrawal['status'], string> = {
+  WITHDRAWAL_STATUS_REQUESTED: 'Requested',
 }
 
-const getStatusColor = (
-  status: BridgeDeposit['status'],
-  colors: ThemeColors
-): string => {
-  switch (status) {
-    case 'DEPOSIT_STATUS_MINTED':
-      return colors.status.success
-    case 'DEPOSIT_STATUS_PENDING':
-      return colors.status.warning
-    case 'DEPOSIT_STATUS_UNCLAIMABLE':
-      return colors.status.error
-    default:
-      return colors.text.secondary
-  }
-}
+const formatAmount = (amountAsteem: string): string =>
+  `${convertRawAmount(amountAsteem, 18)} STEEM`
 
-const StatusPill: React.FC<{ status: BridgeDeposit['status'] }> = ({
-  status,
-}) => {
+const BridgeWithdrawals: React.FC = () => {
   const { colors } = useTheme()
-  const color = getStatusColor(status, colors)
-  return (
-    <span
-      className="reference-pill"
-      style={{ backgroundColor: `${color}20`, color }}
-    >
-      {STATUS_LABELS[status] ?? status}
-    </span>
-  )
-}
-
-const formatAmount = (amountMillisteem: string): string =>
-  `${convertRawAmount(amountMillisteem, 3)} STEEM`
-
-const BridgeDeposits: React.FC = () => {
-  const { colors } = useTheme()
-  const [status, setStatus] = useState<BridgeDepositStatusFilter>('all')
+  const [status, setStatus] = useState<BridgeWithdrawalStatusFilter>('all')
   const [page, setPage] = useState(0)
 
-  const { deposits, total, perPage, isLoading } = useBridgeDeposits(
+  const { withdrawals, total, perPage, isLoading } = useBridgeWithdrawals(
     status,
     page
   )
-  const stats = useBridgeDepositStats()
+  const stats = useBridgeWithdrawalStats()
 
-  const changeStatus = (value: BridgeDepositStatusFilter) => {
+  const changeStatus = (value: BridgeWithdrawalStatusFilter) => {
     setStatus(value)
     setPage(0)
   }
@@ -79,10 +43,16 @@ const BridgeDeposits: React.FC = () => {
       {stats && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            { label: 'Total', value: stats.total },
-            { label: 'Pending', value: stats.pending },
-            { label: 'Minted', value: stats.minted },
-            { label: 'Unclaimable', value: stats.unclaimable },
+            { label: 'Total Withdrawals', value: stats.total.toLocaleString() },
+            { label: 'Requested', value: stats.requested.toLocaleString() },
+            {
+              label: 'Total Minted',
+              value: `${convertRawAmount(stats.totalMintedAsteem, 18)} STEEM`,
+            },
+            {
+              label: 'Total Burned',
+              value: `${convertRawAmount(stats.totalBurnedAsteem, 18)} STEEM`,
+            },
           ].map((stat) => (
             <div
               key={stat.label}
@@ -95,7 +65,7 @@ const BridgeDeposits: React.FC = () => {
                 className="mt-1 text-xl font-semibold"
                 style={{ color: colors.text.primary }}
               >
-                {stat.value.toLocaleString()}
+                {stat.value}
               </p>
             </div>
           ))}
@@ -137,10 +107,13 @@ const BridgeDeposits: React.FC = () => {
                 style={{ borderColor: colors.border.primary }}
               >
                 <th className="reference-table-header px-5 py-4 text-left">
-                  Steem Txid
+                  Burn Tx
                 </th>
                 <th className="reference-table-header px-5 py-4 text-left">
                   Sender
+                </th>
+                <th className="reference-table-header px-5 py-4 text-left">
+                  Destination (Steem)
                 </th>
                 <th className="reference-table-header px-5 py-4 text-left">
                   Amount
@@ -148,36 +121,41 @@ const BridgeDeposits: React.FC = () => {
                 <th className="reference-table-header px-5 py-4 text-left">
                   Status
                 </th>
-                <th className="reference-table-header px-5 py-4 text-left">
-                  Confirmations
-                </th>
                 <th className="reference-table-header px-5 py-4 text-right">
-                  Age
+                  SVM Block
                 </th>
               </tr>
             </thead>
             <tbody>
-              {deposits.map((deposit) => (
+              {withdrawals.map((withdrawal) => (
                 <tr
-                  key={deposit.id}
+                  key={withdrawal.id}
                   className="reference-table-row border-b"
                   style={{ borderColor: colors.border.primary }}
                 >
                   <td className="px-5 py-4">
                     <Link
-                      to={`/bridge/deposits/${deposit.id}`}
+                      to={`/bridge/withdrawals/${withdrawal.id}`}
                       className="font-mono text-sm hover:opacity-70 transition-opacity"
                       style={{ color: colors.primary }}
                     >
-                      {trimHash(deposit.txid, 10)}
+                      {trimHash(withdrawal.burnTxHash, 10)}
                     </Link>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span
+                      className="font-mono text-xs"
+                      style={{ color: colors.text.secondary }}
+                    >
+                      {trimHash(withdrawal.sender, 8)}
+                    </span>
                   </td>
                   <td className="px-5 py-4">
                     <span
                       className="text-sm"
                       style={{ color: colors.text.secondary }}
                     >
-                      {deposit.steemSender}
+                      {withdrawal.destinationSteemAccount}
                     </span>
                   </td>
                   <td className="px-5 py-4">
@@ -185,41 +163,42 @@ const BridgeDeposits: React.FC = () => {
                       className="font-mono text-sm"
                       style={{ color: colors.text.primary }}
                     >
-                      {formatAmount(deposit.amountMillisteem)}
+                      {formatAmount(withdrawal.amountAsteem)}
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <StatusPill status={deposit.status} />
-                  </td>
-                  <td className="px-5 py-4">
                     <span
-                      className="text-sm"
-                      style={{ color: colors.text.secondary }}
+                      className="reference-pill"
+                      style={{
+                        backgroundColor: `${colors.status.warning}20`,
+                        color: colors.status.warning,
+                      }}
                     >
-                      {deposit.validatorConfirmations.length}
+                      {STATUS_LABELS[withdrawal.status] ?? withdrawal.status}
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <span
-                      className="text-sm"
-                      style={{ color: colors.text.secondary }}
+                    <Link
+                      to={`/blocks/${withdrawal.createdAtHeight}`}
+                      className="font-mono text-sm hover:opacity-70 transition-opacity"
+                      style={{ color: colors.primary }}
                     >
-                      {timeFromNow(deposit.steemTimestamp)}
-                    </span>
+                      {Number(withdrawal.createdAtHeight).toLocaleString()}
+                    </Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          {!isLoading && deposits.length === 0 && (
+          {!isLoading && withdrawals.length === 0 && (
             <div className="py-12 text-center">
               <FiRepeat
                 className="mx-auto mb-4 h-12 w-12 opacity-50"
                 style={{ color: colors.text.tertiary }}
               />
               <p style={{ color: colors.text.secondary }}>
-                No bridge deposits found
+                No bridge withdrawals found
               </p>
             </div>
           )}
@@ -232,7 +211,7 @@ const BridgeDeposits: React.FC = () => {
           >
             <span className="text-xs" style={{ color: colors.text.tertiary }}>
               Showing {page * perPage + 1}–
-              {Math.min((page + 1) * perPage, total)} of {total} deposits
+              {Math.min((page + 1) * perPage, total)} of {total} withdrawals
             </span>
             <div className="flex gap-2">
               <button
@@ -269,4 +248,4 @@ const BridgeDeposits: React.FC = () => {
   )
 }
 
-export default BridgeDeposits
+export default BridgeWithdrawals
