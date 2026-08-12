@@ -4,6 +4,12 @@ import { z } from 'zod'
 const envSchema = z.object({
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   RPC_ADDRESS: z.string().min(1, 'RPC_ADDRESS is required'),
+  // Optional failover nodes, tried in order (RPC_ADDRESS first) whenever the
+  // indexer (re)connects — e.g. after a crash-restart triggered by the
+  // primary being down. Not live hot-swapping mid-request, just "next start
+  // attempt tries a different node if this one won't connect."
+  RPC_ADDRESS_BACKUP_1: z.string().optional(),
+  RPC_ADDRESS_BACKUP_2: z.string().optional(),
   CHAIN_NAME: z.string().default(''),
   PORT: z.coerce.number().int().positive().default(4000),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),

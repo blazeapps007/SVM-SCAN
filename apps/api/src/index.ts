@@ -17,8 +17,21 @@ async function main(): Promise<void> {
   // Backfill/live-tail/refreshers run in the background — the server is
   // already accepting requests at this point and will serve whatever's
   // been indexed so far, filling in progressively as this catches up.
+  //
+  // The periodic refreshers (validators/params/proposals) already catch
+  // their own errors and just retry on the next tick — this only fires for
+  // an unrecoverable failure in the core backfill/checkpoint pipeline (e.g.
+  // a chain query that timed out because the node is down). Rather than
+  // trying to reconnect and resume in-process — which would also need to
+  // re-establish the live-tail subscription cleanly — exit and let the
+  // process supervisor (Docker's `restart: unless-stopped`) restart with a
+  // fresh connection; indexing resumes exactly where it left off via the
+  // Mongo checkpoint, and a fresh restart also means a configured backup
+  // RPC node gets a chance if the primary is still down (see
+  // connectIndexer / RPC_ADDRESS_BACKUP_1/2).
   runIndexer(db, tmClient).catch((err) => {
-    console.error('Indexer run failed:', err)
+    console.error('Indexer run failed, exiting for a clean restart:', err)
+    process.exit(1)
   })
 
   const shutdown = async () => {

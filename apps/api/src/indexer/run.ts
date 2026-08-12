@@ -1,7 +1,7 @@
 import { Db } from 'mongodb'
 import { Tendermint37Client } from '@cosmjs/tendermint-rpc'
 import { env } from '../config/env'
-import { connectWebsocketClient } from '../chain/client'
+import { connectWithFailover } from '../chain/client'
 import { getNetworkStatus } from '../chain/query'
 import { ensureIndexes } from '../db/indexes'
 import { syncDenomMetadataFromChain } from '../db/seed/denomMetadata.seed'
@@ -22,7 +22,13 @@ export interface IndexerHandle {
 // backfill, which can take a long time on a chain with a lot of history and
 // must not block the server from listening.
 export async function connectIndexer(db: Db): Promise<IndexerHandle> {
-  const tmClient = await connectWebsocketClient(env.RPC_ADDRESS)
+  const rpcCandidates = [
+    env.RPC_ADDRESS,
+    env.RPC_ADDRESS_BACKUP_1,
+    env.RPC_ADDRESS_BACKUP_2,
+  ].filter((url): url is string => Boolean(url))
+
+  const tmClient = await connectWithFailover(rpcCandidates)
   await ensureIndexes(db)
 
   const status = await getNetworkStatus(tmClient)

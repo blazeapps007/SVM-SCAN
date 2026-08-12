@@ -40,6 +40,31 @@ export async function validateConnection(rpcAddress: string): Promise<boolean> {
   })
 }
 
+// Tries each RPC address in order, returning the first one that connects
+// successfully. Used at (re)connect time — e.g. on a fresh process start
+// after a crash-restart — so a persistently-down primary node doesn't
+// permanently block the indexer if a backup is configured and healthy.
+export async function connectWithFailover(
+  rpcAddresses: readonly string[]
+): Promise<Tendermint37Client> {
+  let lastError: unknown
+
+  for (const rpcAddress of rpcAddresses) {
+    try {
+      const client = await connectWebsocketClient(rpcAddress)
+      return client
+    } catch (err) {
+      lastError = err
+      console.error(`Failed to connect to RPC node ${rpcAddress}:`, err)
+    }
+  }
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError)
+  throw new Error(
+    `Failed to connect to any of ${rpcAddresses.length} RPC node(s): ${detail}`
+  )
+}
+
 export async function connectWebsocketClient(
   rpcAddress: string
 ): Promise<Tendermint37Client> {
