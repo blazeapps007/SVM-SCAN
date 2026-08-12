@@ -7,6 +7,8 @@
 // dependency — everything decoded here is a standardized, well-known
 // selector/topic, not chain- or contract-specific guesswork.
 
+import { withTimeout } from './withTimeout'
+
 interface EthLog {
   address: string
   topics: string[]
@@ -32,11 +34,17 @@ async function rpcCall<T>(
   method: string,
   params: unknown[]
 ): Promise<T> {
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 }),
-  })
+  // Plain fetch() has no default timeout in Node — without this, a hung EVM
+  // node would leave every request through here waiting forever, the same
+  // class of bug as the Cosmos-side tmClient calls (see withTimeout.ts).
+  const response = await withTimeout(
+    fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 }),
+    }),
+    `evm:${method}`
+  )
   const json = (await response.json()) as {
     result?: T
     error?: { message: string }

@@ -11,6 +11,7 @@ import {
   BlockResultsResponse,
 } from '@cosmjs/tendermint-rpc'
 import { env } from '../config/env'
+import { withTimeout } from './withTimeout'
 
 const clientCache = new WeakMap<Tendermint37Client, Promise<StargateClient>>()
 
@@ -18,7 +19,10 @@ async function getClient(
   tmClient: Tendermint37Client
 ): Promise<StargateClient> {
   if (!clientCache.has(tmClient)) {
-    clientCache.set(tmClient, StargateClient.create(tmClient))
+    clientCache.set(
+      tmClient,
+      withTimeout(StargateClient.create(tmClient), 'StargateClient.create')
+    )
   }
   return clientCache.get(tmClient)!
 }
@@ -27,7 +31,7 @@ export async function getChainId(
   tmClient: Tendermint37Client
 ): Promise<string> {
   const client = await getClient(tmClient)
-  return client.getChainId()
+  return withTimeout(client.getChainId(), 'getChainId')
 }
 
 export async function getNetworkStatus(tmClient: Tendermint37Client): Promise<{
@@ -37,7 +41,7 @@ export async function getNetworkStatus(tmClient: Tendermint37Client): Promise<{
   peered: number
   blockInterval: string
 }> {
-  const status = await tmClient.status()
+  const status = await withTimeout(tmClient.status(), 'status')
   const chainId = status.nodeInfo.network
   const syncInfo = status.syncInfo
   const blockHeight = Number(syncInfo.latestBlockHeight)
@@ -65,16 +69,22 @@ export async function getNetworkStatus(tmClient: Tendermint37Client): Promise<{
 
   let peered = 0
   try {
-    const response = await fetch(env.RPC_ADDRESS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'netinfo',
-        method: 'net_info',
-        params: {},
+    // Plain fetch() has no default timeout in Node — without withTimeout
+    // here, a dropped connection would hang this forever even though the
+    // tmClient.status() call above already succeeded.
+    const response = await withTimeout(
+      fetch(env.RPC_ADDRESS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'netinfo',
+          method: 'net_info',
+          params: {},
+        }),
       }),
-    })
+      'net_info'
+    )
     const data = (await response.json()) as {
       result?: { n_peers?: number | string }
     }
@@ -97,7 +107,7 @@ export async function getNetworkStatus(tmClient: Tendermint37Client): Promise<{
 export async function getValidators(
   tmClient: Tendermint37Client
 ): Promise<ValidatorsResponse> {
-  return tmClient.validatorsAll()
+  return withTimeout(tmClient.validatorsAll(), 'validatorsAll')
 }
 
 export type BlockHeaderWithRawFields = Block['header'] & {
@@ -114,10 +124,10 @@ export async function getBlock(
   height: number
 ): Promise<BlockWithRawHeader> {
   const client = await getClient(tmClient)
-  const [block, rawBlock] = await Promise.all([
-    client.getBlock(height),
-    tmClient.block(height),
-  ])
+  const [block, rawBlock] = await withTimeout(
+    Promise.all([client.getBlock(height), tmClient.block(height)]),
+    `getBlock(${height})`
+  )
 
   const header: BlockHeaderWithRawFields = {
     ...block.header,
@@ -132,7 +142,7 @@ export async function getBlockResults(
   tmClient: Tendermint37Client,
   height: number
 ): Promise<BlockResultsResponse> {
-  return tmClient.blockResults(height)
+  return withTimeout(tmClient.blockResults(height), `blockResults(${height})`)
 }
 
 export async function getTx(
@@ -140,7 +150,7 @@ export async function getTx(
   hash: string
 ): Promise<IndexedTx | null> {
   const client = await getClient(tmClient)
-  return client.getTx(hash)
+  return withTimeout(client.getTx(hash), 'getTx')
 }
 
 export async function getAccount(
@@ -148,7 +158,7 @@ export async function getAccount(
   address: string
 ): Promise<Account | null> {
   const client = await getClient(tmClient)
-  return client.getAccount(address)
+  return withTimeout(client.getAccount(address), 'getAccount')
 }
 
 export async function getAllBalances(
@@ -156,7 +166,7 @@ export async function getAllBalances(
   address: string
 ): Promise<readonly Coin[]> {
   const client = await getClient(tmClient)
-  return client.getAllBalances(address)
+  return withTimeout(client.getAllBalances(address), 'getAllBalances')
 }
 
 export async function getBalanceStaked(
@@ -164,5 +174,5 @@ export async function getBalanceStaked(
   address: string
 ): Promise<Coin | null> {
   const client = await getClient(tmClient)
-  return client.getBalanceStaked(address)
+  return withTimeout(client.getBalanceStaked(address), 'getBalanceStaked')
 }

@@ -78,7 +78,9 @@
       "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_denomtrace.mjs)",
       "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_ibc_query.mjs)",
       "Bash(timeout 20 pnpm exec tsx scripts_tmp_check_denom_newpath.mjs)",
-      "Bash(timeout 20 pnpm exec tsx scripts_tmp_verify_decoder.mjs)"
+      "Bash(timeout 20 pnpm exec tsx scripts_tmp_verify_decoder.mjs)",
+      "Bash(curl -s -m 10 -o /dev/null -w \"svmscan.blazeapps.org: %{http_code}\\\\n\" https://svmscan.blazeapps.org/api/health)",
+      "Bash(curl -s -m 10 https://svmscan.blazeapps.org/api/accounts/steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu)"
     ]
   }
 }

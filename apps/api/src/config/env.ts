@@ -24,6 +24,13 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(60000),
+  // How long a single chain RPC query is allowed to hang before it's treated
+  // as failed. The underlying WebSocket client retries the connection
+  // forever on its own with backoff, but has no per-query timeout — without
+  // this, a dropped connection means every in-flight (and new) request just
+  // hangs indefinitely instead of failing, which looks like "the API is
+  // unreachable" from outside even though the process is still running.
+  CHAIN_QUERY_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   // Optional: this chain's own EVM JSON-RPC endpoint (eth_getTransactionByHash
   // etc.) — primary source for decoding MsgEthereumTx transactions. Feature
   // is simply unavailable when unset.
