@@ -19,11 +19,15 @@ import {
   type PageQuery,
 } from '../utils/pagination'
 import { resolveValidatorMoniker } from '../db/validatorLookup'
+import { fetchNameRegistration } from '../chain/steembridgeLcd'
+import { env } from '../config/env'
 
 const ORACLE_ATTESTATION_TYPE_URLS = new Set([
   '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
   '/steemvm.steembridge.v1.MsgSubmitNameRegistration',
 ])
+
+const MSG_CONFIRM_NAME_TYPE_URL = '/steemvm.steembridge.v1.MsgConfirmName'
 
 function toTransactionSummary(doc: TransactionDoc): TransactionSummary {
   return {
@@ -82,21 +86,39 @@ export function registerTransactionRoutes(
 
       const messages = await Promise.all(
         doc.messages.map(async (message) => {
-          if (
-            !ORACLE_ATTESTATION_TYPE_URLS.has(message.typeUrl) ||
-            !message.data ||
-            typeof message.data !== 'object'
-          ) {
+          if (!message.data || typeof message.data !== 'object') {
             return message
           }
-          const data = message.data as { validator?: string }
-          const oracleMoniker = data.validator
-            ? await resolveValidatorMoniker(db, data.validator)
-            : null
-          return {
-            ...message,
-            data: { ...data, oracleMoniker },
+
+          if (ORACLE_ATTESTATION_TYPE_URLS.has(message.typeUrl)) {
+            const data = message.data as { validator?: string }
+            const oracleMoniker = data.validator
+              ? await resolveValidatorMoniker(db, data.validator)
+              : null
+            return { ...message, data: { ...data, oracleMoniker } }
           }
+
+          if (
+            message.typeUrl === MSG_CONFIRM_NAME_TYPE_URL &&
+            env.STEEMBRIDGE_LCD_URL
+          ) {
+            const data = message.data as { registrationId?: string }
+            const registration = data.registrationId
+              ? await fetchNameRegistration(
+                  env.STEEMBRIDGE_LCD_URL,
+                  data.registrationId
+                )
+              : null
+            return {
+              ...message,
+              data: {
+                ...data,
+                linkedSteemAccount: registration?.steem_account ?? null,
+              },
+            }
+          }
+
+          return message
         })
       )
 

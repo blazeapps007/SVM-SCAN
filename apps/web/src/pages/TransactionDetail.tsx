@@ -52,6 +52,7 @@ const TYPE_LABELS: Record<string, string> = {
   SubmitSteemDeposit: 'Submit Steem Deposit',
   BridgeOut: 'Bridge Out (Withdrawal)',
   SubmitNameRegistration: 'Submit Name Registration',
+  ConfirmName: 'Confirm Name',
   Timeout: 'IBC Timeout',
   WithdrawDelegatorReward: 'Withdraw Reward',
   Undelegate: 'Begin Unbonding',
@@ -543,13 +544,22 @@ const TransactionDetail: React.FC = () => {
           ) : (
             <div className="flex flex-col gap-[16px] px-5 py-[18px]">
               <div className="flex flex-wrap items-center gap-[10px]">
-                {evmDetails.method && (
+                {evmDetails.method ? (
                   <span
                     className="reference-pill"
                     style={getMessageTypePillStyle(evmDetails.method, colors)}
                   >
                     {evmDetails.method}
                   </span>
+                ) : (
+                  evmDetails.value !== '0' && (
+                    <span
+                      className="reference-pill"
+                      style={getMessageTypePillStyle('Transfer', colors)}
+                    >
+                      Transfer
+                    </span>
+                  )
                 )}
                 <span
                   className="reference-pill"
@@ -575,6 +585,46 @@ const TransactionDetail: React.FC = () => {
                   >
                     {evmDetails.to}
                   </span>
+                </div>
+              )}
+
+              {evmDetails.value !== '0' && evmDetails.to && (
+                <div className="flex flex-col gap-2">
+                  <span
+                    className="text-[11.5px]"
+                    style={{ color: colors.text.tertiary }}
+                  >
+                    Value Transferred
+                  </span>
+                  <div
+                    className="flex flex-wrap items-center gap-2 rounded-[10px] border px-3 py-2"
+                    style={{ borderColor: colors.border.primary }}
+                  >
+                    <span
+                      className="font-mono text-[12px]"
+                      style={{ color: colors.text.secondary }}
+                      title={evmDetails.from}
+                    >
+                      {trimHash(evmDetails.from, 10)}
+                    </span>
+                    <FiArrowRight
+                      className="h-3.5 w-3.5 shrink-0"
+                      style={{ color: colors.text.tertiary }}
+                    />
+                    <span
+                      className="font-mono text-[12px]"
+                      style={{ color: colors.text.secondary }}
+                      title={evmDetails.to}
+                    >
+                      {trimHash(evmDetails.to, 10)}
+                    </span>
+                    <span
+                      className="ml-auto font-mono text-[12.5px] font-semibold"
+                      style={{ color: colors.text.primary }}
+                    >
+                      {formatTokenAmount(evmDetails.value, '18', 'STEEM')}
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -891,6 +941,13 @@ const TransactionDetail: React.FC = () => {
                           style={{ color: colors.primary }}
                         >
                           {field.value}
+                        </Link>
+                      ) : field.key === 'registrationId' ? (
+                        <Link
+                          to={`/svmns/registrations/${field.value}`}
+                          style={{ color: colors.primary }}
+                        >
+                          {stringifyField(field.value)}
                         </Link>
                       ) : (
                         stringifyField(field.value)

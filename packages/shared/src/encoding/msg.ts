@@ -100,6 +100,7 @@ const TYPE = {
   MsgSubmitSteemDeposit: '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
   MsgBridgeOut: '/steemvm.steembridge.v1.MsgBridgeOut',
   MsgSubmitNameRegistration: '/steemvm.steembridge.v1.MsgSubmitNameRegistration',
+  MsgConfirmName: '/steemvm.steembridge.v1.MsgConfirmName',
 }
 
 export interface DecodeMsg {
@@ -356,10 +357,47 @@ const decodeMsgSubmitNameRegistration = (
   }
 }
 
+// MsgConfirmName (steemvm.steembridge.v1) — the destination address
+// confirming an awaiting name registration, the SVMNS lifecycle's final
+// step. Simplest steembridge message decoded so far: just two fields,
+// verified by hand-walking a real tx's protobuf bytes.
+//   1 confirmer (string, bech32 account), 2 registration_id (varint uint64)
+interface MsgConfirmNameFields {
+  confirmer: string
+  registrationId: string
+}
+
+const decodeMsgConfirmName = (value: Uint8Array): MsgConfirmNameFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgConfirmNameFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.confirmer = reader.string()
+        break
+      case 2:
+        fields.registrationId = reader.uint64().toString()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    confirmer: fields.confirmer ?? '',
+    registrationId: fields.registrationId ?? '0',
+  }
+}
+
 // Best-effort decoder for message types we have no generated (or hand-
-// written) decoder for — e.g. a chain-specific custom module like
-// steemvm.steembridge.v1.MsgConfirmName, where no proto is available to
-// decode against. Surfaces the raw protobuf fields (numbered, since we don't
+// written) decoder for — e.g. a chain-specific custom module where no proto
+// is available to decode against. Surfaces the raw protobuf fields (numbered, since we don't
 // know their real names) instead of showing nothing: printable text is
 // shown as a string, 20/32-byte values (the common length for
 // addresses/hashes) as 0x-hex, everything else as 0x-hex with a byte count.
@@ -551,6 +589,9 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgSubmitNameRegistration:
       data = decodeMsgSubmitNameRegistration(value)
+      break
+    case TYPE.MsgConfirmName:
+      data = decodeMsgConfirmName(value)
       break
     default:
       data = decodeUnknownMessage(value)
