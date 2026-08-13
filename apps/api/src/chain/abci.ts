@@ -39,7 +39,7 @@ import {
 } from 'cosmjs-types/cosmos/bank/v1beta1/query'
 import { QueryDenomTraceRequest } from 'cosmjs-types/ibc/applications/transfer/v1/query'
 import { BinaryReader } from 'cosmjs-types/binary'
-import { withTimeout } from './withTimeout'
+import { withChainTimeout } from './connectionHealth'
 
 // Cache QueryClient instances per Tendermint37Client to avoid creating a new one for every query
 const queryClientCache = new WeakMap<Tendermint37Client, QueryClient>()
@@ -52,7 +52,7 @@ function getQueryClient(tmClient: Tendermint37Client): QueryClient {
     // call site individually.
     const rawQueryAbci = client.queryAbci.bind(client)
     client.queryAbci = (path, data) =>
-      withTimeout(rawQueryAbci(path, data), path)
+      withChainTimeout(rawQueryAbci(path, data), path)
     queryClientCache.set(tmClient, client)
   }
   return queryClientCache.get(tmClient)!

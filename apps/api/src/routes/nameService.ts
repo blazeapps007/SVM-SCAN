@@ -14,17 +14,17 @@ import {
   RawNameRegistration,
 } from '../chain/steembridgeLcd'
 import { resolveValidatorMonikers } from '../db/validatorLookup'
+import { TtlCache } from '../utils/ttlCache'
 
-const CACHE_TTL_MS = 15_000
-const cache = new Map<string, { fetchedAt: number; data: unknown }>()
+const cache = new TtlCache<unknown>(15_000)
 
 async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   const hit = cache.get(key)
-  if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS) {
-    return hit.data as T
+  if (hit !== undefined) {
+    return hit as T
   }
   const data = await load()
-  cache.set(key, { fetchedAt: Date.now(), data })
+  cache.set(key, data)
   return data
 }
 

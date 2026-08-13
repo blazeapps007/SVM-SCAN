@@ -14,18 +14,10 @@ import {
   getEthTransactionReceipt,
   resolveMethodLabel,
 } from '../chain/evmRpc'
+import { TtlCache } from '../utils/ttlCache'
 
-const EVM_TX_CACHE_TTL_MS = 10 * 60_000
-const evmTxCache = new Map<
-  string,
-  { fetchedAt: number; data: EvmTransactionDetails }
->()
-
-const ADDRESS_TOKENS_CACHE_TTL_MS = 60_000
-const addressTokensCache = new Map<
-  string,
-  { fetchedAt: number; data: AddressTokenHolding[] }
->()
+const evmTxCache = new TtlCache<EvmTransactionDetails>(10 * 60_000)
+const addressTokensCache = new TtlCache<AddressTokenHolding[]>(60_000)
 
 interface BlockscoutAddressToken {
   token: {
@@ -56,8 +48,8 @@ export function registerEvmRoutes(app: FastifyInstance): void {
       }
 
       const cached = evmTxCache.get(hash)
-      if (cached && Date.now() - cached.fetchedAt < EVM_TX_CACHE_TTL_MS) {
-        return cached.data
+      if (cached) {
+        return cached
       }
 
       try {
@@ -117,7 +109,7 @@ export function registerEvmRoutes(app: FastifyInstance): void {
             : null,
         }
 
-        evmTxCache.set(hash, { fetchedAt: Date.now(), data })
+        evmTxCache.set(hash, data)
         return data
       } catch (err) {
         request.log.error(err)
@@ -151,11 +143,8 @@ export function registerEvmRoutes(app: FastifyInstance): void {
       }
 
       const cached = addressTokensCache.get(evmAddress)
-      if (
-        cached &&
-        Date.now() - cached.fetchedAt < ADDRESS_TOKENS_CACHE_TTL_MS
-      ) {
-        return cached.data
+      if (cached) {
+        return cached
       }
 
       try {
@@ -176,7 +165,7 @@ export function registerEvmRoutes(app: FastifyInstance): void {
           value: item.value,
         }))
 
-        addressTokensCache.set(evmAddress, { fetchedAt: Date.now(), data })
+        addressTokensCache.set(evmAddress, data)
         return data
       } catch (err) {
         request.log.error(err)

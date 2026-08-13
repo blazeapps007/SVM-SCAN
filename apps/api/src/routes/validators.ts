@@ -22,12 +22,9 @@ import {
   type PageQuery,
 } from '../utils/pagination'
 import type { Db } from 'mongodb'
+import { TtlCache } from '../utils/ttlCache'
 
-const UPTIME_CACHE_TTL_MS = 60_000
-const uptimeCache = new Map<
-  string,
-  { fetchedAt: number; uptime: ValidatorDetailResponse['uptime'] }
->()
+const uptimeCache = new TtlCache<ValidatorDetailResponse['uptime']>(60_000)
 
 function toSummary(
   doc: ValidatorDoc,
@@ -63,8 +60,8 @@ async function resolveUptime(
   doc: ValidatorDoc
 ): Promise<ValidatorDetailResponse['uptime']> {
   const cached = uptimeCache.get(doc.operatorAddress)
-  if (cached && Date.now() - cached.fetchedAt < UPTIME_CACHE_TTL_MS) {
-    return cached.uptime
+  if (cached !== undefined) {
+    return cached
   }
 
   let uptime: ValidatorDetailResponse['uptime'] = null
@@ -104,7 +101,7 @@ async function resolveUptime(
     uptime = null
   }
 
-  uptimeCache.set(doc.operatorAddress, { fetchedAt: Date.now(), uptime })
+  uptimeCache.set(doc.operatorAddress, uptime)
   return uptime
 }
 

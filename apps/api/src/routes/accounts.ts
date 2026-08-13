@@ -19,12 +19,9 @@ import {
   paginatedResponse,
   type PageQuery,
 } from '../utils/pagination'
+import { TtlCache } from '../utils/ttlCache'
 
-const ACCOUNT_CACHE_TTL_MS = 15_000
-const accountCache = new Map<
-  string,
-  { fetchedAt: number; data: AccountDetailResponse }
->()
+const accountCache = new TtlCache<AccountDetailResponse>(15_000)
 
 function toTransactionSummary(doc: TransactionDoc): TransactionSummary {
   return {
@@ -93,8 +90,8 @@ export function registerAccountRoutes(
       const { address } = request.params
 
       const cached = accountCache.get(address)
-      if (cached && Date.now() - cached.fetchedAt < ACCOUNT_CACHE_TTL_MS) {
-        return cached.data
+      if (cached) {
+        return cached
       }
 
       // A validator's operator address is this same account, just
@@ -177,7 +174,7 @@ export function registerAccountRoutes(
         resolvedDenoms,
       }
 
-      accountCache.set(address, { fetchedAt: Date.now(), data })
+      accountCache.set(address, data)
       return data
     }
   )

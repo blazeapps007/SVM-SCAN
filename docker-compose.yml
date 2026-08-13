@@ -13,3 +13,23 @@ services:
       # privileged port inside the container.
       - '${HOST_PORT:-85}:4000'
     restart: unless-stopped
+    # Surfaces a stuck-but-still-running process in `docker ps`/`docker
+    # inspect` (status: unhealthy) for monitoring. Note this alone does NOT
+    # make `restart: unless-stopped` kick in — plain Compose only restarts
+    # on container exit, not on a failing healthcheck. Actual self-recovery
+    # from a dead chain connection comes from the app itself: repeated chain
+    # query timeouts now call process.exit(1) (see
+    # apps/api/src/chain/connectionHealth.ts), which IS a real exit and
+    # does trigger this restart policy.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/api/health').then(r=>r.json()).then(j=>process.exit(j.status==='ok'?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
