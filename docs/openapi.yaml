@@ -215,6 +215,7 @@ paths:
   /transactions:
     get:
       tags: [Transactions]
+      operationId: listTransactions
       summary: List transactions
       description: Newest first. Default page size 50.
       parameters:
@@ -250,6 +251,7 @@ paths:
   /transactions/{hash}:
     get:
       tags: [Transactions]
+      operationId: getTransaction
       summary: Get a transaction by hash
       description: |
         Messages are decoded server-side (see `@dexplorer/shared`'s message
@@ -307,6 +309,7 @@ paths:
   /validators:
     get:
       tags: [Validators]
+      operationId: listValidators
       summary: List validators
       description: Sorted by voting power (tokens) descending. Default page size 100.
       parameters:
@@ -346,6 +349,7 @@ paths:
   /validators/stats:
     get:
       tags: [Validators]
+      operationId: getValidatorStats
       summary: Validator set summary
       responses:
         '200':
@@ -359,6 +363,7 @@ paths:
   /validators/{identity}:
     get:
       tags: [Validators]
+      operationId: getValidator
       summary: Get a validator
       description: The `identity` path segment matches against `identity` (Keybase), `moniker`, or `operatorAddress` — whichever hits first.
       parameters:
@@ -397,6 +402,7 @@ paths:
   /proposals:
     get:
       tags: [Proposals]
+      operationId: listProposals
       summary: List governance proposals
       description: Newest first. Default page size 10.
       parameters:
@@ -429,6 +435,7 @@ paths:
   /proposals/stats:
     get:
       tags: [Proposals]
+      operationId: getProposalStats
       summary: Proposal counts
       responses:
         '200':
@@ -442,6 +449,7 @@ paths:
   /proposals/{id}:
     get:
       tags: [Proposals]
+      operationId: getProposal
       summary: Get a proposal
       parameters:
         - name: id
@@ -484,6 +492,7 @@ paths:
   /accounts/recent:
     get:
       tags: [Accounts]
+      operationId: listRecentAccounts
       summary: Recently active accounts
       description: Derived from the last 200 indexed transactions' senders, not a dedicated collection.
       parameters:
@@ -507,6 +516,7 @@ paths:
   /accounts/{address}:
     get:
       tags: [Accounts]
+      operationId: getAccount
       summary: Get account balances and info
       description: |
         **Deliberate exception to the rest of this API**: balances and
@@ -543,6 +553,7 @@ paths:
   /accounts/{address}/transactions:
     get:
       tags: [Accounts]
+      operationId: listAccountTransactions
       summary: List an account's transactions
       description: Served from the `transactions` collection's indexed `senders` field. Default page size 10.
       parameters:
@@ -579,6 +590,7 @@ paths:
   /ibc-transfers:
     get:
       tags: [IBC Transfers]
+      operationId: listIbcTransfers
       summary: List IBC transfers
       description: Every indexed transaction whose events matched an IBC packet-transfer pattern. Newest first. Default page size 100.
       parameters:
@@ -618,6 +630,7 @@ paths:
   /params:
     get:
       tags: [Params]
+      operationId: getParams
       summary: Chain module parameters
       description: Aggregate of staking/mint/distribution/slashing/gov params, refreshed periodically (not per-block — these barely change).
       responses:
@@ -640,6 +653,7 @@ paths:
   /denoms:
     get:
       tags: [Denoms]
+      operationId: listDenoms
       summary: List known denom metadata
       responses:
         '200':
@@ -657,6 +671,7 @@ paths:
   /denoms/{denom}:
     get:
       tags: [Denoms]
+      operationId: getDenom
       summary: Get denom metadata
       description: 'Falls back to a heuristic guess (source: "fallback") for an unrecognized denom instead of 404ing.'
       parameters:
@@ -677,6 +692,7 @@ paths:
   /evm/tx/{hash}:
     get:
       tags: [EVM]
+      operationId: getEvmTransaction
       summary: Get EVM transaction execution details
       description: Proxies the chain's own EVM JSON-RPC live (10 min server-side cache) — decoded ERC-20/NFT `Transfer`/`Deposit` log events plus the raw native-value transfer amount.
       parameters:
@@ -710,6 +726,7 @@ paths:
   /evm/address/{address}/tokens:
     get:
       tags: [EVM]
+      operationId: listAddressTokens
       summary: List ERC-20/NFT tokens held by an address
       description: |
         Proxies the chain's Blockscout instance (1 min server-side cache) —
@@ -738,6 +755,7 @@ paths:
   /liquidity-pools:
     get:
       tags: [Liquidity Pools]
+      operationId: listLiquidityPools
       summary: List EVM liquidity pools
       description: Every Uniswap-V3-style `PoolCreated` event seen while indexing `MsgEthereumTx` transactions. Newest first. Default page size 25.
       parameters:
@@ -773,6 +791,7 @@ paths:
   /bridge-deposits:
     get:
       tags: [Bridge Deposits]
+      operationId: listBridgeDeposits
       summary: List bridge deposits
       description: Sorted by internal id descending (newest first). Default page size 25.
       parameters:
@@ -822,6 +841,7 @@ paths:
   /bridge-deposits/stats:
     get:
       tags: [Bridge Deposits]
+      operationId: getBridgeDepositStats
       summary: Deposit counts by status
       responses:
         '200':
@@ -835,6 +855,7 @@ paths:
   /bridge-deposits/{idOrTxid}:
     get:
       tags: [Bridge Deposits]
+      operationId: getBridgeDeposit
       summary: Get a deposit by internal id or Steem txid
       parameters:
         - name: idOrTxid
@@ -876,6 +897,7 @@ paths:
   /bridge-withdrawals:
     get:
       tags: [Bridge Withdrawals]
+      operationId: listBridgeWithdrawals
       summary: List bridge withdrawals
       description: Sorted by internal id descending. Default page size 25.
       parameters:
@@ -914,6 +936,7 @@ paths:
   /bridge-withdrawals/stats:
     get:
       tags: [Bridge Withdrawals]
+      operationId: getBridgeWithdrawalStats
       summary: Withdrawal counts and chain-wide bridge totals
       description: The `total*Asteem`/`netOutstandingAsteem` fields come from a live `bridge_statistics` LCD call, not local counts.
       responses:
@@ -933,6 +956,7 @@ paths:
   /bridge-withdrawals/{idOrBurnTxHash}:
     get:
       tags: [Bridge Withdrawals]
+      operationId: getBridgeWithdrawal
       summary: Get a withdrawal by internal id or burn transaction hash
       parameters:
         - name: idOrBurnTxHash
@@ -963,6 +987,7 @@ paths:
   /name-service/resolve/{steemAccount}:
     get:
       tags: [Name Service (SVMNS)]
+      operationId: resolveNameServiceName
       summary: Resolve a Steem username to its currently linked address
       parameters:
         - name: steemAccount
@@ -994,6 +1019,7 @@ paths:
   /name-service/by-address/{address}:
     get:
       tags: [Name Service (SVMNS)]
+      operationId: listNamesByAddress
       summary: Reverse lookup — every active name an address owns
       parameters:
         - $ref: '#/components/parameters/address'
@@ -1017,6 +1043,7 @@ paths:
   /name-service/registrations-by-account/{steemAccount}:
     get:
       tags: [Name Service (SVMNS)]
+      operationId: listNameRegistrationsByAccount
       summary: Full registration history for a Steem username
       description: Every registration attempt ever submitted for this account — pending, awaiting, active, superseded, and expired. The only way to enumerate a name's history, since there's no generic "list all registrations" query.
       parameters:
@@ -1058,6 +1085,7 @@ paths:
   /name-service/registrations/pending:
     get:
       tags: [Name Service (SVMNS)]
+      operationId: listPendingNameRegistrations
       summary: Registrations still accumulating validator attestations
       responses:
         '200':
@@ -1075,6 +1103,7 @@ paths:
   /name-service/registrations/awaiting:
     get:
       tags: [Name Service (SVMNS)]
+      operationId: listAwaitingNameRegistrations
       summary: Registrations awaiting the destination's confirm-name transaction
       description: Reached the attestation threshold but not yet confirmed by the destination address.
       responses:
@@ -1093,6 +1122,7 @@ paths:
   /name-service/registrations/{id}:
     get:
       tags: [Name Service (SVMNS)]
+      operationId: getNameRegistration
       summary: Get a registration by id
       parameters:
         - name: id
