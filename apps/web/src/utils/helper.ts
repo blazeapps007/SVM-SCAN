@@ -4,6 +4,22 @@ import duration from 'dayjs/plugin/duration'
 import { toHex } from '@cosmjs/encoding'
 import { bech32 } from 'bech32'
 
+// Plain fetch() has no default timeout — a hung external API (e.g. Keybase,
+// called directly from a couple of components, not through apiClient.ts)
+// would otherwise leave that fetch pending forever.
+export async function fetchWithTimeout(
+  url: string,
+  timeoutMs = 8000
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export const timeFromNow = (date: string): string => {
   dayjs.extend(relativeTime)
   const now = dayjs()

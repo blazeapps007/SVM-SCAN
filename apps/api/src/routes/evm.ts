@@ -15,6 +15,7 @@ import {
   resolveMethodLabel,
 } from '../chain/evmRpc'
 import { TtlCache } from '../utils/ttlCache'
+import { withTimeout } from '../chain/withTimeout'
 
 const evmTxCache = new TtlCache<EvmTransactionDetails>(10 * 60_000)
 const addressTokensCache = new TtlCache<AddressTokenHolding[]>(60_000)
@@ -148,8 +149,15 @@ export function registerEvmRoutes(app: FastifyInstance): void {
       }
 
       try {
-        const response = await fetch(
-          `${env.EVM_EXPLORER_API_URL}/api/v2/addresses/${evmAddress}/tokens`
+        // Plain fetch() has no default timeout in Node — the same class of
+        // bug fixed elsewhere in this codebase. This route already
+        // fails soft to [] on a genuine error, but a hang isn't an error —
+        // it never reaches the catch block at all without this.
+        const response = await withTimeout(
+          fetch(
+            `${env.EVM_EXPLORER_API_URL}/api/v2/addresses/${evmAddress}/tokens`
+          ),
+          'blockscout:address-tokens'
         )
         if (!response.ok) {
           return []

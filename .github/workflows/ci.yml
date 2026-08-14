@@ -38,6 +38,17 @@ jobs:
       run: pnpm -r check
 
     - name: Test
+      # apps/api's tests use mongodb-memory-server and a stubbed tmClient —
+      # no real chain/Mongo connection is ever made — but src/config/env.ts
+      # validates MONGODB_URI/RPC_ADDRESS as required at import time (before
+      # any test code runs), so importing src/server.ts or anything under
+      # src/chain/ fails immediately without *some* value present. There's
+      # no .env file in CI (it's gitignored, dev-machine only), so these
+      # placeholders just satisfy that check — never used to actually
+      # connect to anything.
+      env:
+        MONGODB_URI: mongodb://placeholder/ci-test
+        RPC_ADDRESS: http://placeholder:26657
       run: pnpm -r test
 
     - name: Build

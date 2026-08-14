@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/theme/ThemeProvider'
 import { FiUser } from 'react-icons/fi'
+import { fetchWithTimeout } from '@/utils/helper'
 
 interface ValidatorIconProps {
   identity?: string
@@ -54,7 +55,7 @@ const ValidatorIcon: React.FC<ValidatorIconProps> = ({
 
     const fetchIcon = async () => {
       try {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`
         )
         const data = await response.json()

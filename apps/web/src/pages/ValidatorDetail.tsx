@@ -15,7 +15,11 @@ import { useTheme } from '@/theme/ThemeProvider'
 import { apiClient } from '@/lib/apiClient'
 import type { ValidatorDetailResponse } from '@dexplorer/shared'
 import { formatAmount, getConvertedAmount } from '@dexplorer/shared'
-import { convertRateToPercent, parseDetailsLines } from '@/utils/helper'
+import {
+  convertRateToPercent,
+  parseDetailsLines,
+  fetchWithTimeout,
+} from '@/utils/helper'
 import ValidatorIcon from '@/components/ValidatorIcon'
 import CopyText from '@/components/ui/CopyText'
 
@@ -90,7 +94,7 @@ const ValidatorDetail: React.FC = () => {
     let isMounted = true
     const resolveUsername = async () => {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${validator.identity}&fields=basics`
         )
         const data = await res.json()
