@@ -1,0 +1,1669 @@
+openapi: 3.1.0
+info:
+  title: SVM Scan API
+  version: '1.0'
+  description: |
+    **SVM Scan** is a read-only REST API that serves indexed data for the
+    Steem Virtual Machine chain — a Cosmos SDK chain with an integrated EVM.
+    It's the backend for [svmscan.blazeapps.org](https://svmscan.blazeapps.org),
+    but is itself a public, unauthenticated API that anyone can call directly.
+
+    A background indexer walks the chain block-by-block into MongoDB
+    (backfill from genesis, then a live tail of new blocks), and this API
+    serves that indexed data. A few endpoints are deliberate exceptions that
+    proxy the chain (or an external LCD/EVM RPC) live instead of reading
+    from the index — each one says so explicitly in its description below.
+
+    ## Conventions
+
+    - **Pagination**: every list endpoint returns the same envelope —
+      `{ "data": [...], "pagination": { "page": 0, "perPage": 50, "total": 123 } }`.
+      `page` is 0-indexed. Pass `?page=` and `?perPage=` as query strings;
+      omitting them uses the endpoint's own default page size.
+    - **Errors**: non-2xx responses are `{ "error": "human-readable message" }`.
+    - **Timestamps**: always ISO-8601 UTC strings (e.g. `2026-08-12T00:32:29.334Z`).
+    - **Big numbers as strings**: coin amounts, block heights used as ids,
+      registration/deposit/withdrawal ids, and anything else that can exceed
+      JavaScript's safe integer range is serialized as a **string**, not a
+      JSON number. Only genuinely small integers (page numbers, counts,
+      block heights used as heights) are real numbers.
+    - **Denoms**: the chain's native token is `asteem` (18 decimals, symbol
+      `STEEM`) — the EVM-side equivalent of the same token is also called
+      STEEM. IBC denoms arrive as `ibc/<hash>`; use `GET /denoms/{denom}` or
+      an account response's `resolvedDenoms` map to get the real symbol.
+  contact:
+    name: SVM Scan
+    url: https://github.com/blazeapps007/SVM-SCAN
+  license:
+    name: GPL-2.0
+    url: https://github.com/blazeapps007/SVM-SCAN/blob/main/LICENSE
+
+servers:
+  - url: https://svmscan.blazeapps.org/api
+    description: Production
+  - url: http://localhost:4000/api
+    description: Local dev (pnpm dev:api)
+
+# This API is entirely public and unauthenticated — declared explicitly so
+# linters don't flag every operation as missing a security requirement.
+security: []
+
+tags:
+  - name: Health
+  - name: Network
+  - name: Blocks
+  - name: Transactions
+  - name: Validators
+  - name: Proposals
+  - name: Accounts
+  - name: IBC Transfers
+  - name: Params
+  - name: Denoms
+  - name: EVM
+  - name: Liquidity Pools
+  - name: Bridge Deposits
+    description: |
+      The `steembridge` module's Steem → SVM deposit direction. A user sends
+      STEEM to a gateway account on Steem with a memo tagging their SVM
+      address; bonded validators (oracles) attest to the deposit, and once
+      enough attestations land it's minted on-chain.
+  - name: Bridge Withdrawals
+    description: |
+      The `steembridge` module's SVM → Steem direction ("bridge-out"). A
+      user burns `asteem` via `MsgBridgeOut`, creating an immutable
+      withdrawal record. There is currently no automated Steem-side payout —
+      this is a queue for validators to relay manually.
+  - name: Name Service (SVMNS)
+    description: |
+      Steem Virtual Machine Name Service — links a Steem username to an SVM
+      address through a registration lifecycle (pending → awaiting →
+      active/superseded/expired). **Not backed by MongoDB** — every endpoint
+      in this group proxies the chain's LCD REST API live (with a short
+      server-side cache), because the underlying query surface has no way to
+      enumerate "every name ever registered," only targeted lookups plus two
+      status-filtered queues.
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: API and indexer health
+      description: |
+        Checks MongoDB and chain-RPC connectivity directly (not just "is the
+        process up") and reports current indexer progress. This is what the
+        frontend polls every 10s to decide whether to show the app or an
+        "unreachable" screen — always returns HTTP 200, check `status` in
+        the body, not the status code.
+      responses:
+        '200':
+          description: OK (check `status` field — always HTTP 200 even when degraded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                mongo: true
+                chain: true
+                indexerMode: live
+                lastIndexedHeight: 382210
+
+  /network/status:
+    get:
+      tags: [Network]
+      operationId: getNetworkStatus
+      summary: Live network status
+      description: Proxies the chain's current sync status directly (not indexed) — chain id, head height, peer count, catching-up flag, average block interval.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkStatusResponse'
+              example:
+                chainId: steemvm
+                blockHeight: 382211
+                catchingUp: false
+                peered: 3
+                blockInterval: 6.7
+
+  /blocks:
+    get:
+      tags: [Blocks]
+      operationId: listBlocks
+      summary: List blocks
+      description: Newest first. Default page size 50.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlockSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - height: 382211
+                    hash: 5552F75E87C8B5C6DFA8126DEEB097FF6CB03F1900156B0E80AE307F35AAA963
+                    time: '2026-08-14T04:50:57.663Z'
+                    proposerAddress: 56D6DF9A8F4DFA6DCF8CABB2F3C9DDE167C68372
+                    appHash: B564B9FBDC6F58BECBE077E84E1B34C11D05245AED71F5CBC01D3C3B224018D5
+                    txCount: 0
+                pagination: { page: 0, perPage: 1, total: 382211 }
+
+  /blocks/{height}:
+    get:
+      tags: [Blocks]
+      operationId: getBlock
+      summary: Get a block by height
+      parameters:
+        - $ref: '#/components/parameters/height'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockDetailResponse'
+              example:
+                height: 353345
+                hash: 9588C1B80D7866742A563495D9791737C683B676B64EC79BAAAFA41A02913951
+                time: '2026-08-12T00:32:29.334Z'
+                proposerAddress: 64837863184C5B2C462593FCD5C366B0558C4EF4
+                appHash: 34C979A8E10126D208206FA3A69613D69967752B52DE00622EDA0458C5507FFE
+                txCount: 3
+                txHashes:
+                  - C05E4276B2B53C907E600335B67C3AD7F6A5BA028B87F841D7D65AB542DB5A0F
+                  - EFFA7B8B3E862C666C68B487C00415472A849DEA8D03F60A0783DCCE7EBACF12
+                  - 92F332E5091F9881BB60AAD23E52913534E641C2272AF7B9B7C732F384C9046C
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /blocks/{height}/transactions:
+    get:
+      tags: [Blocks]
+      operationId: listBlockTransactions
+      summary: List transactions in a block
+      description: Unpaginated — returns every transaction in the block (block tx counts are always small).
+      parameters:
+        - $ref: '#/components/parameters/height'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TransactionSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List transactions
+      description: Newest first. Default page size 50.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransactionSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - hash: 5CD1859FDC00DBB168787B42F47F2D39658D3F3812E7B831BE9E30933638CA03
+                    height: 379199
+                    timestamp: '2026-08-13T23:22:00.430Z'
+                    code: 0
+                    success: true
+                    messageTypes: ['/steemvm.steembridge.v1.MsgSubmitSteemDeposit']
+                    fee: []
+                    gasUsed: '68580'
+                    gasWanted: '600000'
+                pagination: { page: 0, perPage: 1, total: 9064 }
+
+  /transactions/{hash}:
+    get:
+      tags: [Transactions]
+      summary: Get a transaction by hash
+      description: |
+        Messages are decoded server-side (see `@dexplorer/shared`'s message
+        registry) — a type this API doesn't have a named decoder for still
+        decodes, just with generic `field_1`/`field_2`/... keys instead of
+        real names. Two message types get extra enrichment merged into
+        `data`: `MsgSubmitSteemDeposit`/`MsgSubmitNameRegistration` get an
+        `oracleMoniker` (the attesting validator's moniker), and
+        `MsgConfirmName` gets a `linkedSteemAccount`.
+      parameters:
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionDetailResponse'
+              example:
+                hash: C05E4276B2B53C907E600335B67C3AD7F6A5BA028B87F841D7D65AB542DB5A0F
+                height: 353345
+                timestamp: '2026-08-12T00:32:29.334Z'
+                code: 0
+                success: true
+                messageTypes: ['/steemvm.steembridge.v1.MsgSubmitSteemDeposit']
+                fee: []
+                gasUsed: '92488'
+                gasWanted: '600000'
+                log: ''
+                memo: ''
+                chainId: steemvm
+                messages:
+                  - typeUrl: /steemvm.steembridge.v1.MsgSubmitSteemDeposit
+                    data:
+                      validator: steem1u96tympny5r8m76psg5jr7fm8kcrg76w3rmpng
+                      txid: 5da85737d515500e6cb23a02fd981263d8c7de7f
+                      opIndex: 0
+                      steemBlock: '108611220'
+                      steemTimestamp: '2026-08-12T00:31:36'
+                      steemSender: blaze.apps
+                      gatewayAccount: svm.bank
+                      amountMillisteem: '1000'
+                      memo: svm-deposit 0x7fb5a561b74e7da7cd5fb1497830e96b3310d857
+                      oracleMoniker: dhaka.witness
+                events:
+                  - type: deposit_created
+                    attributes:
+                      - { key: deposit_id, value: '1855' }
+                      - { key: txid, value: 5da85737d515500e6cb23a02fd981263d8c7de7f }
+                senders: ['steem1u96tympny5r8m76psg5jr7fm8kcrg76w3rmpng']
+                ibcTransfer: null
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /validators:
+    get:
+      tags: [Validators]
+      summary: List validators
+      description: Sorted by voting power (tokens) descending. Default page size 100.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+        - name: status
+          in: query
+          description: Pass `active` to only return bonded validators; omit for all (including jailed/unbonding).
+          schema: { type: string, enum: [active] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ValidatorSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - operatorAddress: steemvaloper1ghedj9xr90sp3xqx6sx4ey2p0wul684gealm26
+                    moniker: steem-agora.evm
+                    identity: ''
+                    status: BOND_STATUS_UNBONDING
+                    jailed: true
+                    tokens: '9702990123456790123457'
+                    bondDenom: asteem
+                    commissionRate: '100000000000000000'
+                    votingPowerPercent: 1.2008437313791251
+                pagination: { page: 0, perPage: 1, total: 13 }
+
+  /validators/stats:
+    get:
+      tags: [Validators]
+      summary: Validator set summary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidatorStats'
+              example: { activeCount: 11, totalCount: 13, avgCommission: 10 }
+
+  /validators/{identity}:
+    get:
+      tags: [Validators]
+      summary: Get a validator
+      description: The `identity` path segment matches against `identity` (Keybase), `moniker`, or `operatorAddress` — whichever hits first.
+      parameters:
+        - name: identity
+          in: path
+          required: true
+          schema: { type: string }
+          example: blaze.apps
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidatorDetailResponse'
+              example:
+                operatorAddress: steemvaloper107662cdhfe760n2lk9yhsv8fdve3pkzh4gyrhl
+                moniker: blaze.apps
+                identity: ''
+                status: BOND_STATUS_UNBONDING
+                jailed: true
+                tokens: '159885000000000000000000'
+                bondDenom: asteem
+                commissionRate: '100000000000000000'
+                votingPowerPercent: 19.78739517908017
+                website: ''
+                details: owner=STM59ytBUdJ1DaSeFoz4GP5nBFiVBF2dpEDN4cHcR4wYFxWvE2ctR;active=STM5fvPvqwkwDTKXW1wsr7wPdeVXjetjvg1Wer8Zs7P24KFHht2Be;posting=STM5nr8yJLekbns9BNtx8FUxZTvphtfuNKVkTqCXswAjM6GTrQtdX
+                delegatorShares: '161500000000000000000000000000000000000000'
+                minSelfDelegation: '1'
+                unbondingHeight: '381834'
+                consensusPubkey: '{"typeUrl":"/cosmos.crypto.ed25519.PubKey","value":"CiDYdgQY7WlOsllEhbN8WL25EgFCf2uTCZVI9GbEgUmvVw=="}'
+                uptime: { missedBlocksCounter: '0', signedBlocksWindow: '100' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /proposals:
+    get:
+      tags: [Proposals]
+      summary: List governance proposals
+      description: Newest first. Default page size 10.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProposalSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - id: 7
+                    title: 'SteemVM v0.0.2-Beta1 + gateway svm.bank'
+                    status: PROPOSAL_STATUS_PASSED
+                    votingStartTime: null
+                    votingEndTime: null
+                    submitTime: null
+                pagination: { page: 0, perPage: 1, total: 7 }
+
+  /proposals/stats:
+    get:
+      tags: [Proposals]
+      summary: Proposal counts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalStats'
+              example: { total: 7, activeVoting: 0, passed: 3 }
+
+  /proposals/{id}:
+    get:
+      tags: [Proposals]
+      summary: Get a proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProposalDetailResponse'
+              example:
+                id: 1
+                title: 'Activate gov precompile (0x...0805)'
+                status: PROPOSAL_STATUS_PASSED
+                votingStartTime: null
+                votingEndTime: null
+                submitTime: null
+                summary: Add the already-registered gov precompile to active_static_precompiles so gov is callable from EVM/MetaMask.
+                proposer: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                depositEndTime: null
+                totalDeposit:
+                  - { denom: asteem, amount: '10000000000000000000' }
+                finalTallyResult:
+                  yesCount: '605909237228765040000000'
+                  noCount: '0'
+                  abstainCount: '0'
+                  noWithVetoCount: '0'
+                messages:
+                  - typeUrl: /cosmos.evm.vm.v1.MsgUpdateParams
+                    data: { field_1: steem10d07y265gmmuvt4z0w9aw880jnsr700jvhcqmf }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /accounts/recent:
+    get:
+      tags: [Accounts]
+      summary: Recently active accounts
+      description: Derived from the last 200 indexed transactions' senders, not a dedicated collection.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecentAccount'
+              example:
+                - address: steem1eldczteraanqjcp34wfwejavunsuavejaxv29q
+                  lastMessageType: /steemvm.steembridge.v1.MsgSubmitSteemDeposit
+                  lastActivityTime: '2026-08-13T23:22:00.430Z'
+
+  /accounts/{address}:
+    get:
+      tags: [Accounts]
+      summary: Get account balances and info
+      description: |
+        **Deliberate exception to the rest of this API**: balances and
+        sequence are fetched live from the chain (not pre-indexed), since
+        indexing balances for every address ever seen is out of scope.
+        Cached server-side for 15s per address. `ibc/<hash>` balances are
+        resolved to their real symbol/decimals in `resolvedDenoms`.
+      parameters:
+        - $ref: '#/components/parameters/address'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDetailResponse'
+              example:
+                address: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                accountNumber: '0'
+                sequence: '0'
+                balances:
+                  - { denom: asteem, amount: '3000000000000000' }
+                  - { denom: 'ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23', amount: '40000000' }
+                stakedBalance: { amount: '557282717890820016844659', denom: asteem }
+                validator:
+                  operatorAddress: steemvaloper107662cdhfe760n2lk9yhsv8fdve3pkzh4gyrhl
+                  moniker: blaze.apps
+                  identity: ''
+                resolvedDenoms:
+                  asteem: { baseDenom: asteem, symbol: STEEM, decimals: 18, path: null }
+                  'ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23':
+                    { baseDenom: uosmo, symbol: OSMO, decimals: 6, path: transfer/channel-3 }
+
+  /accounts/{address}/transactions:
+    get:
+      tags: [Accounts]
+      summary: List an account's transactions
+      description: Served from the `transactions` collection's indexed `senders` field. Default page size 10.
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransactionSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - hash: 4CB232020C12F0394B364BF44CF5D3171C24DA7D557A2501272B4B8B197C6F01
+                    height: 379192
+                    timestamp: '2026-08-13T23:21:14.631Z'
+                    code: 0
+                    success: true
+                    messageTypes: ['/steemvm.steembridge.v1.MsgSubmitSteemDeposit']
+                    fee: []
+                    gasUsed: '94216'
+                    gasWanted: '600000'
+                pagination: { page: 0, perPage: 1, total: 1292 }
+
+  /ibc-transfers:
+    get:
+      tags: [IBC Transfers]
+      summary: List IBC transfers
+      description: Every indexed transaction whose events matched an IBC packet-transfer pattern. Newest first. Default page size 100.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IBCTransferSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - sender: steem1eulhdpvfw3v4rmqtd6tpa7uy9lpsrkld0fqcuy
+                    receiver: osmo1g7w50yw6572u246w74nkgw6nhy8g2mz8nepznq
+                    sourceChannel: channel-3
+                    sourcePort: transfer
+                    destinationChannel: channel-11812
+                    destinationPort: transfer
+                    amount: '1000000000000000000'
+                    denom: asteem
+                    memo: ''
+                    hash: 333747AE5A25D51E49AFFD5BF81B217E3FE1A7FB6073475E2DF2A64EE489E9D1
+                    height: 332761
+                    timestamp: '2026-08-10T10:27:14.793Z'
+                    status: success
+                pagination: { page: 0, perPage: 1, total: 17 }
+
+  /params:
+    get:
+      tags: [Params]
+      summary: Chain module parameters
+      description: Aggregate of staking/mint/distribution/slashing/gov params, refreshed periodically (not per-block — these barely change).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChainParamsResponse'
+              example:
+                staking: { unbondingTime: { seconds: 2419200, nanos: 0 }, maxValidators: 100, bondDenom: asteem }
+                mint: { mintDenom: asteem, blocksPerYear: 5259600 }
+                distribution: { communityTax: '500000000000000000', withdrawAddrEnabled: true }
+                slashing: { signedBlocksWindow: 100, downtimeJailDuration: { seconds: 600, nanos: 0 } }
+                gov:
+                  votingParams: { votingPeriod: { seconds: 172800, nanos: 0 } }
+                  depositParams: { minDeposit: [{ denom: asteem, amount: '10000000000000000000' }] }
+                  tallyParams: { quorum: '0.334000000000000000', threshold: '0.500000000000000000' }
+
+  /denoms:
+    get:
+      tags: [Denoms]
+      summary: List known denom metadata
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DenomMetadataResponse'
+              example:
+                - { denom: asteem, displayName: Steem, symbol: STEEM, decimals: 18, source: seed }
+                - { denom: 'ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23', displayName: 'transfer/channel-3/uosmo IBC token', symbol: UOSMO, decimals: 0, source: seed }
+
+  /denoms/{denom}:
+    get:
+      tags: [Denoms]
+      summary: Get denom metadata
+      description: 'Falls back to a heuristic guess (source: "fallback") for an unrecognized denom instead of 404ing.'
+      parameters:
+        - name: denom
+          in: path
+          required: true
+          schema: { type: string }
+          example: asteem
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DenomMetadataResponse'
+              example: { denom: asteem, displayName: Steem, symbol: STEEM, decimals: 18, source: seed }
+
+  /evm/tx/{hash}:
+    get:
+      tags: [EVM]
+      summary: Get EVM transaction execution details
+      description: Proxies the chain's own EVM JSON-RPC live (10 min server-side cache) — decoded ERC-20/NFT `Transfer`/`Deposit` log events plus the raw native-value transfer amount.
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: 0x-prefixed EVM transaction hash (not the Cosmos tx hash).
+          schema: { type: string }
+          example: '0xe5ca13579c3cf49d5d4fd99573fd69a92f03e008d6333589fde5ce559a0bc335'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvmTransactionDetails'
+              example:
+                hash: '0xe5ca13579c3cf49d5d4fd99573fd69a92f03e008d6333589fde5ce559a0bc335'
+                status: ok
+                method: null
+                from: '0x7fb5a561b74e7da7cd5fb1497830e96b3310d857'
+                to: '0x0d0f38e13194af032814b91f3a2f44473ee468de'
+                toIsContract: false
+                value: '5000000000000000000000'
+                gasUsed: '21000'
+                tokenTransfers: []
+                explorerUrl: 'https://evmscan.steemscanner.com/tx/0xe5ca13579c3cf49d5d4fd99573fd69a92f03e008d6333589fde5ce559a0bc335'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /evm/address/{address}/tokens:
+    get:
+      tags: [EVM]
+      summary: List ERC-20/NFT tokens held by an address
+      description: |
+        Proxies the chain's Blockscout instance (1 min server-side cache) —
+        there's no way to enumerate "every token an address holds" via
+        JSON-RPC alone. Fails soft to `[]` if Blockscout is unreachable,
+        since this is supplementary to the account page, not load-bearing.
+      parameters:
+        - $ref: '#/components/parameters/address'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AddressTokenHolding'
+              example:
+                - tokenAddress: '0x3250B0340c49895243150AfBFC3995F08A52670D'
+                  tokenType: ERC-20
+                  name: Simple token
+                  symbol: SPT
+                  decimals: '18'
+                  value: '1000000000000000000000000000000'
+
+  /liquidity-pools:
+    get:
+      tags: [Liquidity Pools]
+      summary: List EVM liquidity pools
+      description: Every Uniswap-V3-style `PoolCreated` event seen while indexing `MsgEthereumTx` transactions. Newest first. Default page size 25.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LiquidityPoolSummary'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - poolAddress: '0x9fcf2f4aa3b98de27f797af62896be8d374b0ae7'
+                    factoryAddress: '0xc069cbb7b177580313d8027482f08add61315d83'
+                    token0: { address: '0x8d6538fc7f0929fb24e5d41d81560f12bf3ed783', name: TOKENB, symbol: TOKENB, decimals: '18' }
+                    token1: { address: '0xd6ffe15d1b9835ea88a4de826bd33a67adf1a343', name: TOKENA, symbol: MTK, decimals: '18' }
+                    fee: '2500'
+                    tickSpacing: '50'
+                    createdAtHeight: 301687
+                    createdAtTxHash: '0x8492fc7e74509950009520298b602ba03572ba02500f8fb088216e454dcca546'
+                    createdAt: '2026-08-08T00:58:47.368Z'
+                pagination: { page: 0, perPage: 1, total: 8 }
+
+  /bridge-deposits:
+    get:
+      tags: [Bridge Deposits]
+      summary: List bridge deposits
+      description: Sorted by internal id descending (newest first). Default page size 25.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, minted, unclaimable] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BridgeDeposit'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - id: '1860'
+                    txid: 66e253b62f033225894d2cd86236adb7b2880bb3
+                    opIndex: 0
+                    steemBlock: '108667185'
+                    steemTimestamp: '2026-08-13T23:20:24Z'
+                    steemSender: blaze.apps
+                    gatewayAccount: svm.bank
+                    amountMillisteem: '3'
+                    memo: svm-deposit 0x7fb5a561b74e7da7cd5fb1497830e96b3310d857
+                    derivedDestination: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                    destinationType: DESTINATION_TYPE_EVM
+                    status: DEPOSIT_STATUS_MINTED
+                    minted: true
+                    mintedAt: '379199'
+                    mintTxHash: 86f7f5541622f020b19d0d001adb0762439ab336edbd97ce6f3a8d7d4496c301
+                    createdAtHeight: '379191'
+                    validatorConfirmations:
+                      - validatorAddress: steemvaloper1u96tympny5r8m76psg5jr7fm8kcrg76wms5jgt
+                        moniker: dhaka.witness
+                        timestamp: '1786663267'
+                pagination: { page: 0, perPage: 1, total: 1743 }
+
+  /bridge-deposits/stats:
+    get:
+      tags: [Bridge Deposits]
+      summary: Deposit counts by status
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeDepositStats'
+              example: { pending: 2, minted: 1743, unclaimable: 113, total: 1861 }
+
+  /bridge-deposits/{idOrTxid}:
+    get:
+      tags: [Bridge Deposits]
+      summary: Get a deposit by internal id or Steem txid
+      parameters:
+        - name: idOrTxid
+          in: path
+          required: true
+          schema: { type: string }
+          example: '8'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeDeposit'
+              example:
+                id: '8'
+                txid: 9be06037c04bcdfa61de6a701dbe2220e2f1ec1a
+                opIndex: 0
+                steemBlock: '107853469'
+                steemTimestamp: '2026-07-16T14:05:06Z'
+                steemSender: blaze.apps
+                gatewayAccount: blaze.apps
+                amountMillisteem: '318971'
+                memo: svm-deposit steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                derivedDestination: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                destinationType: DESTINATION_TYPE_COSMOS
+                status: DEPOSIT_STATUS_MINTED
+                minted: true
+                mintedAt: '12693'
+                mintTxHash: 1b901c472e1faa79393e826fc16ce3ccdcb07c14489e57beef797d5e6d93be16
+                createdAtHeight: '12646'
+                validatorConfirmations:
+                  - validatorAddress: steemvaloper107662cdhfe760n2lk9yhsv8fdve3pkzh4gyrhl
+                    moniker: blaze.apps
+                    timestamp: '1784211183'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bridge-withdrawals:
+    get:
+      tags: [Bridge Withdrawals]
+      summary: List bridge withdrawals
+      description: Sorted by internal id descending. Default page size 25.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+        - name: status
+          in: query
+          schema: { type: string, enum: [requested] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BridgeWithdrawal'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - id: '2'
+                    sender: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                    destinationSteemAccount: blaze.apps
+                    amountAsteem: '1000000000000000000000'
+                    amountMillisteem: '1000000'
+                    memo: Bridge out to Steem
+                    burnTxHash: 2bedd554ae62c4c8c21d5530f006f28f6703581afe33f5d2f5f0607398c4c003
+                    status: WITHDRAWAL_STATUS_REQUESTED
+                    createdAtHeight: '173386'
+                pagination: { page: 0, perPage: 1, total: 3 }
+
+  /bridge-withdrawals/stats:
+    get:
+      tags: [Bridge Withdrawals]
+      summary: Withdrawal counts and chain-wide bridge totals
+      description: The `total*Asteem`/`netOutstandingAsteem` fields come from a live `bridge_statistics` LCD call, not local counts.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeWithdrawalStats'
+              example:
+                total: 3
+                requested: 3
+                totalMintedAsteem: '1018234490000000000000000'
+                totalBurnedAsteem: '3000000000000000000000'
+                netOutstandingAsteem: '1015234490000000000000000'
+
+  /bridge-withdrawals/{idOrBurnTxHash}:
+    get:
+      tags: [Bridge Withdrawals]
+      summary: Get a withdrawal by internal id or burn transaction hash
+      parameters:
+        - name: idOrBurnTxHash
+          in: path
+          required: true
+          schema: { type: string }
+          example: '2'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeWithdrawal'
+              example:
+                id: '2'
+                sender: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                destinationSteemAccount: blaze.apps
+                amountAsteem: '1000000000000000000000'
+                amountMillisteem: '1000000'
+                memo: Bridge out to Steem
+                burnTxHash: 2bedd554ae62c4c8c21d5530f006f28f6703581afe33f5d2f5f0607398c4c003
+                status: WITHDRAWAL_STATUS_REQUESTED
+                createdAtHeight: '173386'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /name-service/resolve/{steemAccount}:
+    get:
+      tags: [Name Service (SVMNS)]
+      summary: Resolve a Steem username to its currently linked address
+      parameters:
+        - name: steemAccount
+          in: path
+          required: true
+          schema: { type: string }
+          example: blaze.apps
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NameRecord'
+              example:
+                steemAccount: blaze.apps
+                address: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                registrationId: '7'
+                linkedAt: '23907'
+        '404':
+          description: No active name link for this account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { error: 'Name not found' }
+        '503':
+          $ref: '#/components/responses/NameServiceUnavailable'
+
+  /name-service/by-address/{address}:
+    get:
+      tags: [Name Service (SVMNS)]
+      summary: Reverse lookup — every active name an address owns
+      parameters:
+        - $ref: '#/components/parameters/address'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NameRecord'
+              example:
+                - steemAccount: blaze.apps
+                  address: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                  registrationId: '7'
+                  linkedAt: '23907'
+        '503':
+          $ref: '#/components/responses/NameServiceUnavailable'
+
+  /name-service/registrations-by-account/{steemAccount}:
+    get:
+      tags: [Name Service (SVMNS)]
+      summary: Full registration history for a Steem username
+      description: Every registration attempt ever submitted for this account — pending, awaiting, active, superseded, and expired. The only way to enumerate a name's history, since there's no generic "list all registrations" query.
+      parameters:
+        - name: steemAccount
+          in: path
+          required: true
+          schema: { type: string }
+          example: blaze.apps
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NameRegistration'
+              example:
+                - id: '0'
+                  txid: '0000000000000000000000000000000000000000'
+                  opIndex: 0
+                  steemBlock: '0'
+                  steemTimestamp: genesis
+                  steemAccount: blaze.apps
+                  gatewayAccount: blaze.apps
+                  amountMillisteem: '1'
+                  memo: steem1l6p4lh7plepjqv2muhuk6m8k2envnvv9utknlu
+                  derivedDestination: steem1l6p4lh7plepjqv2muhuk6m8k2envnvv9utknlu
+                  destinationType: DESTINATION_TYPE_COSMOS
+                  status: NAME_REGISTRATION_STATUS_SUPERSEDED
+                  createdAtHeight: '0'
+                  awaitingSinceHeight: '0'
+                  confirmedAtHeight: '0'
+                  confirmTxHash: ''
+                  validatorConfirmations: []
+        '503':
+          $ref: '#/components/responses/NameServiceUnavailable'
+
+  /name-service/registrations/pending:
+    get:
+      tags: [Name Service (SVMNS)]
+      summary: Registrations still accumulating validator attestations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NameRegistration'
+              example: []
+        '503':
+          $ref: '#/components/responses/NameServiceUnavailable'
+
+  /name-service/registrations/awaiting:
+    get:
+      tags: [Name Service (SVMNS)]
+      summary: Registrations awaiting the destination's confirm-name transaction
+      description: Reached the attestation threshold but not yet confirmed by the destination address.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NameRegistration'
+              example: []
+        '503':
+          $ref: '#/components/responses/NameServiceUnavailable'
+
+  /name-service/registrations/{id}:
+    get:
+      tags: [Name Service (SVMNS)]
+      summary: Get a registration by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          example: '26'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NameRegistration'
+              example:
+                id: '26'
+                txid: 13e5acea13fd674e3f4ed6f2819d8c423d7a6107
+                opIndex: 0
+                steemBlock: '108627196'
+                steemTimestamp: '2026-08-12T13:53:33Z'
+                steemAccount: steem-agora
+                gatewayAccount: svm.bank
+                amountMillisteem: '1'
+                memo: svm-register steem1p58n3cf3jjhsx2q5hy0n5t6ygulwg6x7ewqfjk
+                derivedDestination: steem1p58n3cf3jjhsx2q5hy0n5t6ygulwg6x7ewqfjk
+                destinationType: DESTINATION_TYPE_COSMOS
+                status: NAME_REGISTRATION_STATUS_ACTIVE
+                createdAtHeight: '360730'
+                awaitingSinceHeight: '360738'
+                confirmedAtHeight: '360769'
+                confirmTxHash: ad399b7828dcfb8e4734af7a79523b879f9e25c008f3614ee335936ef1159da7
+                validatorConfirmations:
+                  - validatorAddress: steemvaloper1u96tympny5r8m76psg5jr7fm8kcrg76wms5jgt
+                    moniker: dhaka.witness
+                    timestamp: '1786542867'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/NameServiceUnavailable'
+
+components:
+  parameters:
+    page:
+      name: page
+      in: query
+      description: 0-indexed page number.
+      schema: { type: integer, default: 0, minimum: 0 }
+    perPage:
+      name: perPage
+      in: query
+      description: Items per page (endpoint-specific default and max).
+      schema: { type: integer, minimum: 1, maximum: 200 }
+    height:
+      name: height
+      in: path
+      required: true
+      schema: { type: integer }
+      example: 353345
+    hash:
+      name: hash
+      in: path
+      required: true
+      description: Cosmos transaction hash, case-insensitive.
+      schema: { type: string }
+      example: C05E4276B2B53C907E600335B67C3AD7F6A5BA028B87F841D7D65AB542DB5A0F
+    address:
+      name: address
+      in: path
+      required: true
+      description: bech32 account address.
+      schema: { type: string }
+      example: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+
+  responses:
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: 'Not found' }
+    BadRequest:
+      description: Invalid parameter
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: 'Invalid block height' }
+    NameServiceUnavailable:
+      description: STEEMBRIDGE_LCD_URL isn't configured on this deployment
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { error: 'Name service unavailable' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        perPage: { type: integer }
+        total: { type: integer }
+      required: [page, perPage, total]
+
+    Coin:
+      type: object
+      properties:
+        denom: { type: string }
+        amount: { type: string }
+      required: [denom, amount]
+
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        mongo: { type: boolean }
+        chain: { type: boolean }
+        indexerMode: { type: string, enum: [backfill, live] }
+        lastIndexedHeight: { type: integer }
+      required: [status, mongo, chain, indexerMode, lastIndexedHeight]
+
+    NetworkStatusResponse:
+      type: object
+      properties:
+        chainId: { type: string }
+        blockHeight: { type: integer }
+        catchingUp: { type: boolean }
+        peered: { type: integer }
+        blockInterval: { type: number, description: Average seconds between blocks. }
+      required: [chainId, blockHeight, catchingUp, peered, blockInterval]
+
+    BlockSummary:
+      type: object
+      properties:
+        height: { type: integer }
+        hash: { type: string }
+        time: { type: string, format: date-time }
+        proposerAddress: { type: string }
+        appHash: { type: string }
+        txCount: { type: integer }
+      required: [height, hash, time, proposerAddress, appHash, txCount]
+
+    BlockDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BlockSummary'
+        - type: object
+          properties:
+            txHashes:
+              type: array
+              items: { type: string }
+          required: [txHashes]
+
+    TransactionSummary:
+      type: object
+      properties:
+        hash: { type: string }
+        height: { type: integer }
+        timestamp: { type: string, format: date-time }
+        code: { type: integer, description: 0 means success. }
+        success: { type: boolean }
+        messageTypes:
+          type: array
+          items: { type: string }
+        fee:
+          type: array
+          items: { $ref: '#/components/schemas/Coin' }
+        gasUsed: { type: string }
+        gasWanted: { type: string }
+      required: [hash, height, timestamp, code, success, messageTypes, fee, gasUsed, gasWanted]
+
+    DecodeMsg:
+      type: object
+      description: A decoded Cosmos SDK message. `data`'s shape depends on `typeUrl` — see the message-type registry in `packages/shared/src/encoding/msg.ts`.
+      properties:
+        typeUrl: { type: string }
+        data:
+          type: [object, 'null']
+          additionalProperties: true
+      required: [typeUrl, data]
+
+    EventAttribute:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: string }
+        index: { type: boolean }
+      required: [key, value]
+
+    TxEvent:
+      type: object
+      properties:
+        type: { type: string }
+        attributes:
+          type: array
+          items: { $ref: '#/components/schemas/EventAttribute' }
+      required: [type, attributes]
+
+    IBCTransferFields:
+      type: object
+      properties:
+        sender: { type: string }
+        receiver: { type: string }
+        sourceChannel: { type: string }
+        sourcePort: { type: string }
+        destinationChannel: { type: string }
+        destinationPort: { type: string }
+        amount: { type: string }
+        denom: { type: string }
+        memo: { type: string }
+      required: [sender, receiver, sourceChannel, sourcePort, destinationChannel, destinationPort, amount, denom, memo]
+
+    TransactionDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/TransactionSummary'
+        - type: object
+          properties:
+            log: { type: string }
+            memo: { type: string }
+            chainId: { type: string }
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/DecodeMsg' }
+            events:
+              type: array
+              items: { $ref: '#/components/schemas/TxEvent' }
+            senders:
+              type: array
+              items: { type: string }
+            ibcTransfer:
+              oneOf:
+                - $ref: '#/components/schemas/IBCTransferFields'
+                - type: 'null'
+          required: [log, memo, chainId, messages, events, senders, ibcTransfer]
+
+    ValidatorSummary:
+      type: object
+      properties:
+        operatorAddress: { type: string }
+        moniker: { type: string }
+        identity: { type: string }
+        status: { type: string }
+        jailed: { type: boolean }
+        tokens: { type: string }
+        bondDenom: { type: string }
+        commissionRate: { type: string }
+        votingPowerPercent: { type: number }
+      required: [operatorAddress, moniker, identity, status, jailed, tokens, bondDenom, commissionRate, votingPowerPercent]
+
+    ValidatorUptime:
+      type: object
+      properties:
+        missedBlocksCounter: { type: string }
+        signedBlocksWindow: { type: string }
+      required: [missedBlocksCounter, signedBlocksWindow]
+
+    ValidatorDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ValidatorSummary'
+        - type: object
+          properties:
+            website: { type: string }
+            details: { type: string }
+            delegatorShares: { type: string }
+            minSelfDelegation: { type: string }
+            unbondingHeight: { type: string }
+            consensusPubkey:
+              oneOf: [{ type: string }, { type: 'null' }]
+            uptime:
+              oneOf:
+                - $ref: '#/components/schemas/ValidatorUptime'
+                - type: 'null'
+          required: [website, details, delegatorShares, minSelfDelegation, unbondingHeight, consensusPubkey, uptime]
+
+    ValidatorStats:
+      type: object
+      properties:
+        activeCount: { type: integer }
+        totalCount: { type: integer }
+        avgCommission: { type: number }
+      required: [activeCount, totalCount, avgCommission]
+
+    ProposalSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        status: { type: string }
+        votingStartTime: { oneOf: [{ type: string, format: date-time }, { type: 'null' }] }
+        votingEndTime: { oneOf: [{ type: string, format: date-time }, { type: 'null' }] }
+        submitTime: { oneOf: [{ type: string, format: date-time }, { type: 'null' }] }
+      required: [id, title, status, votingStartTime, votingEndTime, submitTime]
+
+    ProposalDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ProposalSummary'
+        - type: object
+          properties:
+            summary: { type: string }
+            proposer: { type: string }
+            depositEndTime: { oneOf: [{ type: string, format: date-time }, { type: 'null' }] }
+            totalDeposit:
+              type: array
+              items: { $ref: '#/components/schemas/Coin' }
+            finalTallyResult:
+              oneOf:
+                - type: object
+                  properties:
+                    yesCount: { type: string }
+                    noCount: { type: string }
+                    abstainCount: { type: string }
+                    noWithVetoCount: { type: string }
+                  required: [yesCount, noCount, abstainCount, noWithVetoCount]
+                - type: 'null'
+            messages:
+              type: array
+              items: { $ref: '#/components/schemas/DecodeMsg' }
+          required: [summary, proposer, depositEndTime, totalDeposit, finalTallyResult, messages]
+
+    ProposalStats:
+      type: object
+      properties:
+        total: { type: integer }
+        activeVoting: { type: integer }
+        passed: { type: integer }
+      required: [total, activeVoting, passed]
+
+    AccountValidatorLink:
+      type: object
+      properties:
+        operatorAddress: { type: string }
+        moniker: { type: string }
+        identity: { type: string }
+      required: [operatorAddress, moniker, identity]
+
+    ResolvedDenom:
+      type: object
+      properties:
+        baseDenom: { type: string }
+        symbol: { type: string }
+        decimals: { type: integer }
+        path: { oneOf: [{ type: string }, { type: 'null' }] }
+      required: [baseDenom, symbol, decimals, path]
+
+    AccountDetailResponse:
+      type: object
+      properties:
+        address: { type: string }
+        accountNumber: { type: string }
+        sequence: { type: string }
+        balances:
+          type: array
+          items: { $ref: '#/components/schemas/Coin' }
+        stakedBalance:
+          oneOf:
+            - $ref: '#/components/schemas/Coin'
+            - type: 'null'
+        validator:
+          oneOf:
+            - $ref: '#/components/schemas/AccountValidatorLink'
+            - type: 'null'
+        resolvedDenoms:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ResolvedDenom' }
+      required: [address, accountNumber, sequence, balances, stakedBalance, validator, resolvedDenoms]
+
+    RecentAccount:
+      type: object
+      properties:
+        address: { type: string }
+        lastMessageType: { type: string }
+        lastActivityTime: { type: string, format: date-time }
+      required: [address, lastMessageType, lastActivityTime]
+
+    IBCTransferSummary:
+      allOf:
+        - $ref: '#/components/schemas/IBCTransferFields'
+        - type: object
+          properties:
+            hash: { type: string }
+            height: { type: integer }
+            timestamp: { type: string, format: date-time }
+            status: { type: string, enum: [success, failed] }
+          required: [hash, height, timestamp, status]
+
+    EvmTokenTransfer:
+      type: object
+      properties:
+        type: { type: string, enum: [token_transfer, token_minting] }
+        from: { type: string }
+        to: { type: string }
+        tokenAddress: { type: string }
+        tokenName: { oneOf: [{ type: string }, { type: 'null' }] }
+        tokenSymbol: { oneOf: [{ type: string }, { type: 'null' }] }
+        tokenDecimals: { oneOf: [{ type: string }, { type: 'null' }] }
+        amount: { oneOf: [{ type: string }, { type: 'null' }] }
+      required: [type, from, to, tokenAddress, tokenName, tokenSymbol, tokenDecimals, amount]
+
+    EvmTransactionDetails:
+      type: object
+      properties:
+        hash: { type: string }
+        status: { type: string, enum: [ok, error] }
+        method: { oneOf: [{ type: string }, { type: 'null' }], description: A best-effort label for known selectors (e.g. ERC-20 transfer); null for a plain value transfer or an unrecognized selector. }
+        from: { type: string }
+        to: { oneOf: [{ type: string }, { type: 'null' }] }
+        toIsContract: { type: boolean }
+        value: { type: string, description: 'Native asteem transferred, 18 decimals.' }
+        gasUsed: { type: string }
+        tokenTransfers:
+          type: array
+          items: { $ref: '#/components/schemas/EvmTokenTransfer' }
+        explorerUrl: { oneOf: [{ type: string }, { type: 'null' }] }
+      required: [hash, status, method, from, to, toIsContract, value, gasUsed, tokenTransfers, explorerUrl]
+
+    AddressTokenHolding:
+      type: object
+      properties:
+        tokenAddress: { type: string }
+        tokenType: { type: string }
+        name: { oneOf: [{ type: string }, { type: 'null' }] }
+        symbol: { oneOf: [{ type: string }, { type: 'null' }] }
+        decimals: { oneOf: [{ type: string }, { type: 'null' }] }
+        value: { type: string }
+      required: [tokenAddress, tokenType, name, symbol, decimals, value]
+
+    LiquidityPoolTokenInfo:
+      type: object
+      properties:
+        address: { type: string }
+        name: { oneOf: [{ type: string }, { type: 'null' }] }
+        symbol: { oneOf: [{ type: string }, { type: 'null' }] }
+        decimals: { oneOf: [{ type: string }, { type: 'null' }] }
+      required: [address, name, symbol, decimals]
+
+    LiquidityPoolSummary:
+      type: object
+      properties:
+        poolAddress: { type: string }
+        factoryAddress: { type: string }
+        token0: { $ref: '#/components/schemas/LiquidityPoolTokenInfo' }
+        token1: { $ref: '#/components/schemas/LiquidityPoolTokenInfo' }
+        fee: { type: string, description: 'Hundredths of a basis point, e.g. "2500" = 0.25%.' }
+        tickSpacing: { type: string }
+        createdAtHeight: { type: integer }
+        createdAtTxHash: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [poolAddress, factoryAddress, token0, token1, fee, tickSpacing, createdAtHeight, createdAtTxHash, createdAt]
+
+    BridgeValidatorConfirmation:
+      type: object
+      properties:
+        validatorAddress: { type: string }
+        moniker: { oneOf: [{ type: string }, { type: 'null' }] }
+        timestamp: { type: string, description: Unix seconds. }
+      required: [validatorAddress, moniker, timestamp]
+
+    BridgeDeposit:
+      type: object
+      properties:
+        id: { type: string }
+        txid: { type: string, description: Steem transaction id. }
+        opIndex: { type: integer }
+        steemBlock: { type: string }
+        steemTimestamp: { type: string, format: date-time }
+        steemSender: { type: string }
+        gatewayAccount: { type: string }
+        amountMillisteem: { type: string }
+        memo: { type: string }
+        derivedDestination: { type: string }
+        destinationType: { type: string, enum: [DESTINATION_TYPE_NONE, DESTINATION_TYPE_COSMOS, DESTINATION_TYPE_EVM] }
+        status: { type: string, enum: [DEPOSIT_STATUS_PENDING, DEPOSIT_STATUS_MINTED, DEPOSIT_STATUS_UNCLAIMABLE] }
+        minted: { type: boolean }
+        mintedAt: { type: string, description: 'SVM block height, "0" if not yet minted.' }
+        mintTxHash: { type: string }
+        createdAtHeight: { type: string }
+        validatorConfirmations:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeValidatorConfirmation' }
+      required: [id, txid, opIndex, steemBlock, steemTimestamp, steemSender, gatewayAccount, amountMillisteem, memo, derivedDestination, destinationType, status, minted, mintedAt, mintTxHash, createdAtHeight, validatorConfirmations]
+
+    BridgeDepositStats:
+      type: object
+      properties:
+        pending: { type: integer }
+        minted: { type: integer }
+        unclaimable: { type: integer }
+        total: { type: integer }
+      required: [pending, minted, unclaimable, total]
+
+    BridgeWithdrawal:
+      type: object
+      properties:
+        id: { type: string }
+        sender: { type: string, description: SVM account that burned the tokens. }
+        destinationSteemAccount: { type: string }
+        amountAsteem: { type: string, description: 18 decimals. }
+        amountMillisteem: { type: string, description: Convenience 3-decimal duplicate of amountAsteem. }
+        memo: { type: string }
+        burnTxHash: { type: string, description: 'SVM chain tx hash (indexed — links to GET /transactions/{hash}).' }
+        status: { type: string, enum: [WITHDRAWAL_STATUS_REQUESTED] }
+        createdAtHeight: { type: string }
+      required: [id, sender, destinationSteemAccount, amountAsteem, amountMillisteem, memo, burnTxHash, status, createdAtHeight]
+
+    BridgeWithdrawalStats:
+      type: object
+      properties:
+        total: { type: integer }
+        requested: { type: integer }
+        totalMintedAsteem: { type: string }
+        totalBurnedAsteem: { type: string }
+        netOutstandingAsteem: { type: string }
+      required: [total, requested, totalMintedAsteem, totalBurnedAsteem, netOutstandingAsteem]
+
+    NameRecord:
+      type: object
+      properties:
+        steemAccount: { type: string }
+        address: { type: string }
+        registrationId: { type: string }
+        linkedAt: { type: string, description: SVM block height. }
+      required: [steemAccount, address, registrationId, linkedAt]
+
+    NameRegistration:
+      type: object
+      properties:
+        id: { type: string }
+        txid: { type: string }
+        opIndex: { type: integer }
+        steemBlock: { type: string }
+        steemTimestamp: { type: string, description: 'ISO-8601 UTC, or the literal "genesis" for a genesis-seeded registration.' }
+        steemAccount: { type: string }
+        gatewayAccount: { type: string }
+        amountMillisteem: { type: string }
+        memo: { type: string }
+        derivedDestination: { type: string }
+        destinationType: { type: string, enum: [DESTINATION_TYPE_NONE, DESTINATION_TYPE_COSMOS, DESTINATION_TYPE_EVM] }
+        status: { type: string, description: 'One of NAME_REGISTRATION_STATUS_{PENDING,AWAITING,ACTIVE,SUPERSEDED,EXPIRED}.' }
+        createdAtHeight: { type: string }
+        awaitingSinceHeight: { type: string }
+        confirmedAtHeight: { type: string }
+        confirmTxHash: { type: string }
+        validatorConfirmations:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeValidatorConfirmation' }
+      required: [id, txid, opIndex, steemBlock, steemTimestamp, steemAccount, gatewayAccount, amountMillisteem, memo, derivedDestination, destinationType, status, createdAtHeight, awaitingSinceHeight, confirmedAtHeight, confirmTxHash, validatorConfirmations]
+
+    ChainParamsResponse:
+      type: object
+      properties:
+        staking: { type: [object, 'null'], additionalProperties: true }
+        mint: { type: [object, 'null'], additionalProperties: true }
+        distribution: { type: [object, 'null'], additionalProperties: true }
+        slashing: { type: [object, 'null'], additionalProperties: true }
+        gov:
+          type: object
+          properties:
+            votingParams: { type: [object, 'null'], additionalProperties: true }
+            depositParams: { type: [object, 'null'], additionalProperties: true }
+            tallyParams: { type: [object, 'null'], additionalProperties: true }
+      required: [staking, mint, distribution, slashing, gov]
+
+    DenomMetadataResponse:
+      type: object
+      properties:
+        denom: { type: string }
+        displayName: { type: string }
+        symbol: { type: string }
+        decimals: { type: integer }
+        source: { type: string, enum: [seed, manual, fallback] }
+      required: [denom, displayName, symbol, decimals, source]

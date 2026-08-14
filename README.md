@@ -9,6 +9,8 @@
     <br />
     <a href="#features">Features</a>
     ·
+    <a href="https://blazeapps007.github.io/SVM-SCAN/">API Docs</a>
+    ·
     <a href="https://github.com/blazeapps007/SVM-SCAN/issues">Report Bug</a>
     ·
     <a href="https://github.com/blazeapps007/SVM-SCAN/issues">Request Feature</a>
@@ -20,6 +22,9 @@
     </a>
     <a href="https://github.com/blazeapps007/SVM-SCAN/actions/workflows/ci.yml">
       <img src="https://github.com/blazeapps007/SVM-SCAN/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
+    </a>
+    <a href="https://github.com/blazeapps007/SVM-SCAN/actions/workflows/docs.yml">
+      <img src="https://github.com/blazeapps007/SVM-SCAN/actions/workflows/docs.yml/badge.svg" alt="API Docs Status" />
     </a>
     <a href="https://github.com/blazeapps007/SVM-SCAN/stargazers">
       <img src="https://img.shields.io/github/stars/blazeapps007/SVM-SCAN" alt="Stars" />
