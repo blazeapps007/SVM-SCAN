@@ -81,6 +81,7 @@ Data survives reloads (it's in MongoDB, not browser memory) and history goes bac
 - **Testing Goal**: 80% coverage (Unit, Integration, E2E). `apps/api` route tests use `mongodb-memory-server` (see `apps/api/test/routes/`) — no live chain/Mongo needed to run them.
 - **Verification**: ALWAYS run `pnpm lint` and `pnpm check` after every task completion to ensure code quality and type safety.
 - **Security**: No hardcoded secrets — real credentials only in gitignored `.env` files, never `.env.example`.
+- **API docs stay in sync**: `docs/openapi.yaml` is the source of truth for the public REST API reference (built with Redoc, published to GitHub Pages by `.github/workflows/docs.yml`). Any change that adds, removes, or changes the shape of an API route (`apps/api/src/routes/*.ts`), a shared response type (`packages/shared/src/types/api.ts`), or a MongoDB schema field that flows into a response — update the matching path/schema in `docs/openapi.yaml` in the same change, not as a follow-up. Use a real example response (fetched live, not fabricated) the same way the rest of the spec does.
 
 ## Known Issues (Fix Priority)
 
