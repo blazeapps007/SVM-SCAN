@@ -963,8 +963,8 @@ paths:
     get:
       tags: [Bridge Deposits]
       operationId: getBridgeDepositStats
-      summary: Deposit counts by status, plus minted totals per asset
-      description: '`mintedByAsset` is computed from our own indexed `bridgeDeposits` (MongoDB `$sum`/`$toDecimal` aggregation over MINTED deposits, grouped by `asset`) — not a chain LCD call, since the chain''s `bridge_statistics` only tracks STEEM. Excludes SVMNS name-registration mints (`MsgSubmitNameRegistration` also mints asteem 1:1 on confirmation but isn''t tracked as a deposit).'
+      summary: Deposit counts by status, plus per-asset counts and minted totals
+      description: '`countByAsset` and `mintedByAsset` are computed from our own indexed `bridgeDeposits` (MongoDB aggregation grouped by `asset`; `mintedByAsset` sums via `$sum`/`$toDecimal` over MINTED deposits only, `countByAsset` counts every status) — not a chain LCD call, since the chain''s `bridge_statistics` only tracks STEEM. Excludes SVMNS name-registration mints (`MsgSubmitNameRegistration` also mints asteem 1:1 on confirmation but isn''t tracked as a deposit).'
       responses:
         '200':
           description: OK
@@ -977,6 +977,11 @@ paths:
                 minted: 1743
                 unclaimable: 113
                 total: 1861
+                countByAsset:
+                  - asset: BRIDGE_ASSET_SBD
+                    count: 1
+                  - asset: BRIDGE_ASSET_STEEM
+                    count: 1860
                 mintedByAsset:
                   - asset: BRIDGE_ASSET_SBD
                     amountMillisteem: '1'
@@ -1774,6 +1779,13 @@ components:
         amountMillisteem: { type: string, description: 3-decimal convention, same as BridgeDeposit/BridgeWithdrawal's amountMillisteem. }
       required: [asset, amountMillisteem]
 
+    BridgeAssetCount:
+      type: object
+      properties:
+        asset: { type: string, enum: [BRIDGE_ASSET_STEEM, BRIDGE_ASSET_SBD] }
+        count: { type: integer }
+      required: [asset, count]
+
     BridgeDepositStats:
       type: object
       properties:
@@ -1781,11 +1793,15 @@ components:
         minted: { type: integer }
         unclaimable: { type: integer }
         total: { type: integer, description: Count of deposits indexed as `bridgeDeposits` docs — does not include SVMNS name-registration mints. }
+        countByAsset:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeAssetCount' }
+          description: Count of deposits (any status), grouped by asset.
         mintedByAsset:
           type: array
           items: { $ref: '#/components/schemas/BridgeAssetTotal' }
           description: Sum of amountMillisteem across MINTED deposits, grouped by asset — computed from our own indexed data, not a chain LCD call. Excludes SVMNS name-registration mints.
-      required: [pending, minted, unclaimable, total, mintedByAsset]
+      required: [pending, minted, unclaimable, total, countByAsset, mintedByAsset]
 
     BridgeWithdrawal:
       type: object
