@@ -30,6 +30,7 @@ export const bridgeDepositSchema = z.object({
   createdAtHeight: z.string(),
   validatorConfirmations: z.array(validatorConfirmationSchema),
   lastRefreshedAt: z.date(),
+  asset: z.string(),
 })
 
 export type BridgeDepositDoc = z.infer<typeof bridgeDepositSchema>

@@ -97,10 +97,17 @@ const TYPE = {
   MsgTransfer: '/ibc.applications.transfer.v1.MsgTransfer',
   MsgSoftwareUpgrade: '/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade',
   MsgEthereumTx: '/cosmos.evm.vm.v1.MsgEthereumTx',
-  MsgSubmitSteemDeposit: '/steemvm.steembridge.v1.MsgSubmitSteemDeposit',
+  MsgAttestDeposit: '/steemvm.steembridge.v1.MsgAttestDeposit',
   MsgBridgeOut: '/steemvm.steembridge.v1.MsgBridgeOut',
   MsgSubmitNameRegistration: '/steemvm.steembridge.v1.MsgSubmitNameRegistration',
   MsgConfirmName: '/steemvm.steembridge.v1.MsgConfirmName',
+  MsgAttestWithdrawalPayout:
+    '/steemvm.steembridge.v1.MsgAttestWithdrawalPayout',
+  MsgAggregateExchangeRateVote:
+    '/steemvm.oracle.data.v1.MsgAggregateExchangeRateVote',
+  MsgAggregateExchangeRatePrevote:
+    '/steemvm.oracle.data.v1.MsgAggregateExchangeRatePrevote',
+  MsgUpdateFeemarketParams: '/cosmos.evm.feemarket.v1.MsgUpdateParams',
 }
 
 export interface DecodeMsg {
@@ -149,10 +156,15 @@ const decodeMsgEthereumTx = (value: Uint8Array): MsgEthereumTxFields => {
   }
 }
 
-// MsgSubmitSteemDeposit (steemvm.steembridge.v1) — an oracle validator
-// attesting to a Steem-side deposit. No proto is available for this custom
-// module, so the field numbers/wire types below were verified by hand
-// (walking the raw protobuf bytes of a real tx) rather than assumed:
+// MsgAttestDeposit (steemvm.steembridge.v1) — an oracle validator attesting
+// to a Steem-side deposit. Named MsgSubmitSteemDeposit here until the actual
+// on-chain type name (`MsgAttestDeposit`, confirmed both against a live tx's
+// typeUrl and the chain repo's own module docs) was verified — same field
+// layout as guessed, just the wrong type name, which meant every tx of this
+// type silently fell through to decodeUnknownMessage's field_N fallback
+// instead of this decoder. No proto is available for this custom module, so
+// the field numbers/wire types below were verified by hand (walking the raw
+// protobuf bytes of a real tx) rather than assumed:
 //   1 validator (string, bech32 account address of the oracle)
 //   2 txid (string, Steem txid)
 //   3 op_index (varint uint32 — proto3 omits this on the wire when 0)
@@ -162,7 +174,7 @@ const decodeMsgEthereumTx = (value: Uint8Array): MsgEthereumTxFields => {
 //   7 gateway_account (string)
 //   8 amount_millisteem (varint uint64)
 //   9 memo (string)
-interface MsgSubmitSteemDepositFields {
+interface MsgAttestDepositFields {
   validator: string
   txid: string
   opIndex: number
@@ -174,12 +186,12 @@ interface MsgSubmitSteemDepositFields {
   memo: string
 }
 
-const decodeMsgSubmitSteemDeposit = (
+const decodeMsgAttestDeposit = (
   value: Uint8Array
-): MsgSubmitSteemDepositFields => {
+): MsgAttestDepositFields => {
   const reader = new BinaryReader(value)
   const end = reader.len
-  const fields: Partial<MsgSubmitSteemDepositFields> = { opIndex: 0 }
+  const fields: Partial<MsgAttestDepositFields> = { opIndex: 0 }
 
   while (reader.pos < end) {
     const tag = reader.uint32()
@@ -235,7 +247,7 @@ const decodeMsgSubmitSteemDeposit = (
 // MsgBridgeOut (steemvm.steembridge.v1) — a user burning asteem to withdraw
 // back to Steem ("bridge-out"). No proto available; field numbers verified
 // by hand-walking the raw protobuf bytes of a real tx, same method as
-// MsgSubmitSteemDeposit. All fields are plain strings:
+// MsgAttestDeposit. All fields are plain strings:
 //   1 sender, 2 destination_steem_account, 3 amount_asteem, 4 memo
 interface MsgBridgeOutFields {
   sender: string
@@ -282,7 +294,7 @@ const decodeMsgBridgeOut = (value: Uint8Array): MsgBridgeOutFields => {
 
 // MsgSubmitNameRegistration (steemvm.steembridge.v1) — an oracle validator
 // attesting to a Steem-name registration request. Identical field layout to
-// MsgSubmitSteemDeposit (verified by hand-walking a real tx's protobuf
+// MsgAttestDeposit (verified by hand-walking a real tx's protobuf
 // bytes), just field 6 is the Steem account being registered rather than a
 // deposit sender:
 //   1 validator, 2 txid, 3 op_index, 4 steem_block, 5 steem_timestamp,
@@ -392,6 +404,310 @@ const decodeMsgConfirmName = (value: Uint8Array): MsgConfirmNameFields => {
   return {
     confirmer: fields.confirmer ?? '',
     registrationId: fields.registrationId ?? '0',
+  }
+}
+
+// MsgAttestWithdrawalPayout (steemvm.steembridge.v1) — an oracle validator
+// attesting that a withdrawal's Steem-side payout has landed. No proto
+// available; field numbers verified by hand-walking the raw protobuf bytes
+// of two real txs (one for withdrawal id 0, one for id 1) — comparing them
+// is what confirmed field 2 is withdrawalId (proto3 omits it on the wire for
+// id 0, exactly like op_index elsewhere in this file). Field 4 never
+// appeared non-empty in either sample, so its purpose is unknown and it's
+// left undecoded (falls through to skipType, same as any other unhandled
+// field number):
+//   1 validator (string, bech32 account address of the oracle)
+//   2 withdrawal_id (varint uint64 — omitted on the wire when 0)
+//   3 steem_txid (string, the Steem-side payout txid)
+//   5 steem_block (varint uint64)
+//   6 steem_timestamp (string)
+interface MsgAttestWithdrawalPayoutFields {
+  validator: string
+  withdrawalId: string
+  steemTxid: string
+  steemBlock: string
+  steemTimestamp: string
+}
+
+const decodeMsgAttestWithdrawalPayout = (
+  value: Uint8Array
+): MsgAttestWithdrawalPayoutFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgAttestWithdrawalPayoutFields> = { withdrawalId: '0' }
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.validator = reader.string()
+        break
+      case 2:
+        fields.withdrawalId = reader.uint64().toString()
+        break
+      case 3:
+        fields.steemTxid = reader.string()
+        break
+      case 5:
+        fields.steemBlock = reader.uint64().toString()
+        break
+      case 6:
+        fields.steemTimestamp = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    validator: fields.validator ?? '',
+    withdrawalId: fields.withdrawalId ?? '0',
+    steemTxid: fields.steemTxid ?? '',
+    steemBlock: fields.steemBlock ?? '0',
+    steemTimestamp: fields.steemTimestamp ?? '',
+  }
+}
+
+// MsgAggregateExchangeRateVote / MsgAggregateExchangeRatePrevote
+// (steemvm.oracle.data.v1) — the reveal and commit halves of the oracledata
+// module's commit-reveal price-feed voting (see chain/oracleLcd.ts). No
+// proto available; field numbers verified by hand-walking the raw protobuf
+// bytes of two real txs. Field *names* below match the module's own emitted
+// event attribute names (`aggregate_vote`'s `validator`/`exchange_rate`,
+// `aggregate_prevote`'s `validator`/`hash`) rather than a guessed proto
+// field name, since those event names come straight from the chain binary
+// and are the one thing here that isn't a guess:
+//   Vote:    1 validator (string, bech32 account — same "account form for an
+//            oracle identity" pattern as MsgAttestDeposit's field 1)
+//            2 salt (string, hex — the commit-reveal salt)
+//            3 exchange_rates (string, comma-separated "PAIR:rate" list —
+//            parsed into structured entries below rather than left as one
+//            long string, since the format is simple and verified)
+//   Prevote: 1 validator (string, bech32 account)
+//            2 hash (string, hex — commit hash of salt+exchange_rates+validator)
+export interface ExchangeRateVoteEntry {
+  pair: string
+  rate: string
+}
+
+const parseExchangeRatesCsv = (raw: string): ExchangeRateVoteEntry[] =>
+  raw
+    .split(',')
+    .map((entry): ExchangeRateVoteEntry | null => {
+      const [pair, rate] = entry.split(':')
+      return pair && rate ? { pair, rate } : null
+    })
+    .filter((entry): entry is ExchangeRateVoteEntry => entry !== null)
+
+interface MsgAggregateExchangeRateVoteFields {
+  validator: string
+  salt: string
+  exchangeRates: ExchangeRateVoteEntry[]
+}
+
+const decodeMsgAggregateExchangeRateVote = (
+  value: Uint8Array
+): MsgAggregateExchangeRateVoteFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: { validator?: string; salt?: string; exchangeRatesRaw?: string } =
+    {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.validator = reader.string()
+        break
+      case 2:
+        fields.salt = reader.string()
+        break
+      case 3:
+        fields.exchangeRatesRaw = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    validator: fields.validator ?? '',
+    salt: fields.salt ?? '',
+    exchangeRates: parseExchangeRatesCsv(fields.exchangeRatesRaw ?? ''),
+  }
+}
+
+interface MsgAggregateExchangeRatePrevoteFields {
+  validator: string
+  hash: string
+}
+
+const decodeMsgAggregateExchangeRatePrevote = (
+  value: Uint8Array
+): MsgAggregateExchangeRatePrevoteFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgAggregateExchangeRatePrevoteFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.validator = reader.string()
+        break
+      case 2:
+        fields.hash = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    validator: fields.validator ?? '',
+    hash: fields.hash ?? '',
+  }
+}
+
+// Cosmos SDK's LegacyDec ("sdk.Dec") wire encoding is the internal
+// fixed-point big integer (logical value * 10^18) written out as a plain
+// ASCII digit string — this converts that into the same human-decimal
+// string form ABCI-decoded Dec fields already arrive in elsewhere in this
+// codebase (e.g. gov tally's "0.334000000000000000"), by inserting a
+// decimal point 18 places from the right (LegacyDec always keeps exactly 18
+// decimal places).
+const decodeLegacyDecString = (raw: string): string => {
+  const negative = raw.startsWith('-')
+  const digits = (negative ? raw.slice(1) : raw).padStart(19, '0')
+  const whole = digits.slice(0, -18) || '0'
+  const fraction = digits.slice(-18)
+  return `${negative ? '-' : ''}${whole}.${fraction}`
+}
+
+// MsgUpdateParams (cosmos.evm.feemarket.v1) — a gov-only parameter-change
+// message for the EVM feemarket module (controls EIP-1559 base fee behavior
+// and the chain's minimum gas price). cosmjs-types has no generated types
+// for this module (same situation as MsgEthereumTx), so both the outer
+// message and its nested Params sub-message are hand-decoded here. Field
+// numbers/types verified two ways: against the real proto
+// (github.com/cosmos/evm, proto/cosmos/evm/feemarket/v1/{tx,feemarket}.proto)
+// and by cross-checking the decoded values byte-for-byte against a real
+// proposal's LCD JSON (GET /cosmos/gov/v1/proposals/{id}) — they matched
+// exactly, including the non-obvious part: min_gas_price is field 7, not 6
+// (field 4, initial_base_fee, is reserved/deprecated on the wire, which is
+// why the numbering skips it).
+//   MsgUpdateParams: 1 authority (string), 2 params (embedded Params message)
+//   Params: 1 no_base_fee (bool), 2 base_fee_change_denominator (uint32),
+//     3 elasticity_multiplier (uint32), 5 enable_height (int64),
+//     6 base_fee (LegacyDec), 7 min_gas_price (LegacyDec),
+//     8 min_gas_multiplier (LegacyDec)
+interface FeemarketParamsFields {
+  noBaseFee: boolean
+  baseFeeChangeDenominator: number
+  elasticityMultiplier: number
+  enableHeight: string
+  baseFee: string
+  minGasPrice: string
+  minGasMultiplier: string
+}
+
+const decodeFeemarketParams = (value: Uint8Array): FeemarketParamsFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<FeemarketParamsFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.noBaseFee = reader.bool()
+        break
+      case 2:
+        fields.baseFeeChangeDenominator = reader.uint32()
+        break
+      case 3:
+        fields.elasticityMultiplier = reader.uint32()
+        break
+      case 5:
+        fields.enableHeight = reader.int64().toString()
+        break
+      case 6:
+        fields.baseFee = decodeLegacyDecString(reader.string())
+        break
+      case 7:
+        fields.minGasPrice = decodeLegacyDecString(reader.string())
+        break
+      case 8:
+        fields.minGasMultiplier = decodeLegacyDecString(reader.string())
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    noBaseFee: fields.noBaseFee ?? false,
+    baseFeeChangeDenominator: fields.baseFeeChangeDenominator ?? 0,
+    elasticityMultiplier: fields.elasticityMultiplier ?? 0,
+    enableHeight: fields.enableHeight ?? '0',
+    baseFee: fields.baseFee ?? '0.000000000000000000',
+    minGasPrice: fields.minGasPrice ?? '0.000000000000000000',
+    minGasMultiplier: fields.minGasMultiplier ?? '0.000000000000000000',
+  }
+}
+
+interface MsgUpdateFeemarketParamsFields {
+  authority: string
+  params: FeemarketParamsFields
+}
+
+const decodeMsgUpdateFeemarketParams = (
+  value: Uint8Array
+): MsgUpdateFeemarketParamsFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgUpdateFeemarketParamsFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.authority = reader.string()
+        break
+      case 2:
+        fields.params = decodeFeemarketParams(reader.bytes())
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    authority: fields.authority ?? '',
+    params: fields.params ?? {
+      noBaseFee: false,
+      baseFeeChangeDenominator: 0,
+      elasticityMultiplier: 0,
+      enableHeight: '0',
+      baseFee: '0.000000000000000000',
+      minGasPrice: '0.000000000000000000',
+      minGasMultiplier: '0.000000000000000000',
+    },
   }
 }
 
@@ -581,8 +897,8 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
     case TYPE.MsgEthereumTx:
       data = decodeMsgEthereumTx(value)
       break
-    case TYPE.MsgSubmitSteemDeposit:
-      data = decodeMsgSubmitSteemDeposit(value)
+    case TYPE.MsgAttestDeposit:
+      data = decodeMsgAttestDeposit(value)
       break
     case TYPE.MsgBridgeOut:
       data = decodeMsgBridgeOut(value)
@@ -592,6 +908,18 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgConfirmName:
       data = decodeMsgConfirmName(value)
+      break
+    case TYPE.MsgAttestWithdrawalPayout:
+      data = decodeMsgAttestWithdrawalPayout(value)
+      break
+    case TYPE.MsgAggregateExchangeRateVote:
+      data = decodeMsgAggregateExchangeRateVote(value)
+      break
+    case TYPE.MsgAggregateExchangeRatePrevote:
+      data = decodeMsgAggregateExchangeRatePrevote(value)
+      break
+    case TYPE.MsgUpdateFeemarketParams:
+      data = decodeMsgUpdateFeemarketParams(value)
       break
     default:
       data = decodeUnknownMessage(value)

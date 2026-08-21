@@ -1,4 +1,4 @@
-export type { DecodeMsg } from './encoding/msg'
+export type { DecodeMsg, ExchangeRateVoteEntry } from './encoding/msg'
 export { decodeMsg } from './encoding/msg'
 
 export {

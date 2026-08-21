@@ -1,5 +1,7 @@
 import { Db } from 'mongodb'
 import { Tendermint37Client } from '@cosmjs/tendermint-rpc'
+import type { BridgeParams, OracleParams } from '@dexplorer/shared'
+import { env } from '../config/env'
 import {
   queryStakingParams,
   queryMintParams,
@@ -7,6 +9,8 @@ import {
   querySlashingParams,
   queryGovParams,
 } from '../chain/abci'
+import { fetchBridgeParams } from '../chain/steembridgeLcd'
+import { fetchOracleParams } from '../chain/oracleLcd'
 import {
   CHAIN_PARAMS_COLLECTION,
   ChainParamsDoc,
@@ -67,6 +71,51 @@ export async function refreshParams(
         (await queryGovParams(tmClient, 'tallying')).tallyParams,
     },
   ]
+
+  // steembridge/oracledata are separate custom modules with no proto/ABCI
+  // path — queried over LCD (see steembridgeLcd.ts/oracleLcd.ts) — so they're
+  // simply unavailable when STEEMBRIDGE_LCD_URL isn't set, same gating as the
+  // bridge deposit/withdrawal/name-service features.
+  if (env.STEEMBRIDGE_LCD_URL) {
+    const lcdUrl = env.STEEMBRIDGE_LCD_URL
+    sources.push(
+      {
+        key: 'bridge',
+        fetch: async (): Promise<BridgeParams> => {
+          const raw = await fetchBridgeParams(lcdUrl)
+          return {
+            bridgeEnabled: raw.bridge_enabled,
+            bridgeOutEnabled: raw.bridge_out_enabled,
+            gatewayAccount: raw.gateway_account,
+            bridgeConfirmationThreshold: raw.bridge_confirmation_threshold,
+            minimumBridgeAmount: raw.minimum_bridge_amount,
+            maximumBridgeAmount: raw.maximum_bridge_amount,
+            depositTimeoutBlocks: raw.deposit_timeout_blocks,
+            nameServiceEnabled: raw.name_service_enabled,
+            nameRegistrationMinMillisteem:
+              raw.name_registration_min_millisteem,
+            namePendingTimeoutBlocks: raw.name_pending_timeout_blocks,
+            relayerStartBlock: raw.relayer_start_block,
+            bridgeFeeBps: raw.bridge_fee_bps,
+            withdrawalTimeoutBlocks: raw.withdrawal_timeout_blocks,
+          }
+        },
+      },
+      {
+        key: 'oracle',
+        fetch: async (): Promise<OracleParams> => {
+          const raw = await fetchOracleParams(lcdUrl)
+          return {
+            votePeriod: raw.vote_period,
+            voteThreshold: raw.vote_threshold,
+            rewardBand: raw.reward_band,
+            missBand: raw.miss_band,
+            whitelist: raw.whitelist,
+          }
+        },
+      }
+    )
+  }
 
   // Each module is fetched/persisted independently — one unsupported or
   // failing module (e.g. a chain without the slashing module) must not

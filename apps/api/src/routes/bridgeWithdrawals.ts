@@ -1,12 +1,15 @@
 import type { FastifyInstance } from 'fastify'
-import type { BridgeWithdrawal, BridgeWithdrawalStats } from '@dexplorer/shared'
+import type {
+  BridgeAssetTotal,
+  BridgeWithdrawal,
+  BridgeWithdrawalStats,
+} from '@dexplorer/shared'
 import type { AppContext } from '../server'
 import {
   BRIDGE_WITHDRAWALS_COLLECTION,
   BridgeWithdrawalDoc,
 } from '../db/schemas/bridgeWithdrawal.schema'
-import { fetchBridgeStatistics } from '../chain/steembridgeLcd'
-import { env } from '../config/env'
+import { resolveValidatorMonikers } from '../db/validatorLookup'
 import {
   parsePagination,
   paginatedResponse,
@@ -15,9 +18,14 @@ import {
 
 const STATUS_FILTER_MAP: Record<string, string> = {
   requested: 'WITHDRAWAL_STATUS_REQUESTED',
+  processed: 'WITHDRAWAL_STATUS_PROCESSED',
+  refunded: 'WITHDRAWAL_STATUS_REFUNDED',
 }
 
-function toWithdrawal(doc: BridgeWithdrawalDoc): BridgeWithdrawal {
+function toWithdrawal(
+  doc: BridgeWithdrawalDoc,
+  monikers: Map<string, string>
+): BridgeWithdrawal {
   return {
     id: doc.id,
     sender: doc.sender,
@@ -28,6 +36,17 @@ function toWithdrawal(doc: BridgeWithdrawalDoc): BridgeWithdrawal {
     burnTxHash: doc.burnTxHash,
     status: doc.status as BridgeWithdrawal['status'],
     createdAtHeight: doc.createdAtHeight,
+    asset: doc.asset,
+    feeMillisteem: doc.feeMillisteem,
+    steemPayoutTxid: doc.steemPayoutTxid,
+    payoutOpIndex: doc.payoutOpIndex,
+    processedAtHeight: doc.processedAtHeight,
+    refundedAtHeight: doc.refundedAtHeight,
+    validatorConfirmations: doc.validatorConfirmations.map((c) => ({
+      validatorAddress: c.validatorAddress,
+      moniker: monikers.get(c.validatorAddress) ?? null,
+      timestamp: c.timestamp,
+    })),
   }
 }
 
@@ -42,21 +61,35 @@ export function registerBridgeWithdrawalRoutes(
   app.get(
     '/bridge-withdrawals/stats',
     async (): Promise<BridgeWithdrawalStats> => {
-      const [total, requested, stats] = await Promise.all([
-        collection.countDocuments({}),
-        collection.countDocuments({ status: 'WITHDRAWAL_STATUS_REQUESTED' }),
-        env.STEEMBRIDGE_LCD_URL
-          ? fetchBridgeStatistics(env.STEEMBRIDGE_LCD_URL)
-          : null,
-      ])
+      const [total, requested, processed, withdrawnByAsset] =
+        await Promise.all([
+          collection.countDocuments({}),
+          collection.countDocuments({ status: 'WITHDRAWAL_STATUS_REQUESTED' }),
+          collection.countDocuments({ status: 'WITHDRAWAL_STATUS_PROCESSED' }),
+          // Not status-filtered — the burn already happened by the time a
+          // withdrawal is indexed at all, regardless of what it's status
+          // later becomes. $toDecimal avoids float precision loss.
+          collection
+            .aggregate<BridgeAssetTotal>([
+              {
+                $group: {
+                  _id: '$asset',
+                  sum: { $sum: { $toDecimal: '$amountMillisteem' } },
+                },
+              },
+              {
+                $project: {
+                  _id: 0,
+                  asset: '$_id',
+                  amountMillisteem: { $toString: '$sum' },
+                },
+              },
+              { $sort: { asset: 1 } },
+            ])
+            .toArray(),
+        ])
 
-      return {
-        total,
-        requested,
-        totalMintedAsteem: stats?.total_minted_asteem ?? '0',
-        totalBurnedAsteem: stats?.total_burned_asteem ?? '0',
-        netOutstandingAsteem: stats?.net_outstanding ?? '0',
-      }
+      return { total, requested, processed, withdrawnByAsset }
     }
   )
 
@@ -79,7 +112,19 @@ export function registerBridgeWithdrawalRoutes(
         collection.countDocuments(filter),
       ])
 
-      return paginatedResponse(docs.map(toWithdrawal), page, perPage, total)
+      const monikers = await resolveValidatorMonikers(
+        db,
+        docs.flatMap((doc) =>
+          doc.validatorConfirmations.map((c) => c.validatorAddress)
+        )
+      )
+
+      return paginatedResponse(
+        docs.map((doc) => toWithdrawal(doc, monikers)),
+        page,
+        perPage,
+        total
+      )
     }
   )
 
@@ -93,7 +138,12 @@ export function registerBridgeWithdrawalRoutes(
       if (!doc) {
         return reply.status(404).send({ error: 'Bridge withdrawal not found' })
       }
-      return toWithdrawal(doc)
+
+      const monikers = await resolveValidatorMonikers(
+        db,
+        doc.validatorConfirmations.map((c) => c.validatorAddress)
+      )
+      return toWithdrawal(doc, monikers)
     }
   )
 }

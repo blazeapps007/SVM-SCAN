@@ -70,6 +70,12 @@ export interface TransactionDetailResponse extends TransactionSummary {
   events: TxEventDoc[]
   senders: string[]
   ibcTransfer: IBCTransferFields | null
+  // bech32 address -> Cosmos SDK module account name (e.g. "fee_collector",
+  // "bridge_reward", "steemblackhole"), for labeling module accounts that
+  // show up as a sender/receiver in `events` — empty when STEEMBRIDGE_LCD_URL
+  // isn't configured (there's no other way to resolve these, since module
+  // account addresses are derived from the module name, not human-chosen).
+  moduleAccounts: Record<string, string>
 }
 
 export interface ValidatorSummary {
@@ -127,6 +133,14 @@ export interface ProposalDetailResponse extends ProposalSummary {
     noWithVetoCount: string
   } | null
   messages: DecodeMsg[]
+  // Gov v1's expedited-proposal path (shorter voting period, higher pass
+  // threshold) — false for a normal proposal.
+  expedited: boolean
+  // Set only if status is PROPOSAL_STATUS_FAILED (a passed proposal whose
+  // messages then failed to execute on-chain) — empty string otherwise,
+  // including for PROPOSAL_STATUS_REJECTED (a plain "voted No" outcome,
+  // which has no failure reason to report).
+  failedReason: string
 }
 
 export interface ProposalStats {
@@ -257,6 +271,19 @@ export interface BridgeDeposit {
   mintTxHash: string
   createdAtHeight: string
   validatorConfirmations: BridgeValidatorConfirmation[]
+  // "BRIDGE_ASSET_STEEM" or "BRIDGE_ASSET_SBD" — both confirmed live. Never
+  // assume STEEM; always read this field for the display unit.
+  asset: string
+}
+
+export interface BridgeAssetTotal {
+  asset: string
+  amountMillisteem: string
+}
+
+export interface BridgeAssetCount {
+  asset: string
+  count: number
 }
 
 export interface BridgeDepositStats {
@@ -264,6 +291,15 @@ export interface BridgeDepositStats {
   minted: number
   unclaimable: number
   total: number
+  // Count of deposits (any status), grouped by asset.
+  countByAsset: BridgeAssetCount[]
+  // Sum of amountMillisteem across MINTED deposits, grouped by asset —
+  // computed from our own indexed `bridgeDeposits` (the chain's
+  // `bridge_statistics` only tracks STEEM, not SBD, so it can't answer this).
+  // Doesn't include SVMNS name-registration mints (`MsgSubmitNameRegistration`
+  // also mints asteem 1:1 via steemblackhole, same mechanism as a deposit,
+  // but isn't indexed as one — see BridgeDeposit's docs).
+  mintedByAsset: BridgeAssetTotal[]
 }
 
 export interface BridgeWithdrawal {
@@ -274,16 +310,40 @@ export interface BridgeWithdrawal {
   amountMillisteem: string
   memo: string
   burnTxHash: string
-  status: 'WITHDRAWAL_STATUS_REQUESTED'
+  status:
+    | 'WITHDRAWAL_STATUS_REQUESTED'
+    | 'WITHDRAWAL_STATUS_PROCESSED'
+    | 'WITHDRAWAL_STATUS_REFUNDED'
   createdAtHeight: string
+  asset: string
+  // The protocol fee withheld from `amountMillisteem`/`amountAsteem` — sent
+  // to the `bridge_reward` module account on-chain (see the burn tx's
+  // events), not part of the payout the destination Steem account receives.
+  feeMillisteem: string
+  // The Steem-side payout transaction id, set once status flips to
+  // PROCESSED. Empty until then.
+  steemPayoutTxid: string
+  payoutOpIndex: number
+  // SVM block height the withdrawal was marked PROCESSED at; "0" until then.
+  processedAtHeight: string
+  // SVM block height an unconfirmed withdrawal was auto-refunded at (past
+  // `withdrawalTimeoutBlocks` in the bridge params, no attestation needed);
+  // "0" unless that happened.
+  refundedAtHeight: string
+  validatorConfirmations: BridgeValidatorConfirmation[]
 }
 
 export interface BridgeWithdrawalStats {
   total: number
   requested: number
-  totalMintedAsteem: string
-  totalBurnedAsteem: string
-  netOutstandingAsteem: string
+  processed: number
+  // Sum of amountMillisteem across every indexed withdrawal, grouped by
+  // asset — computed from our own indexed `bridgeWithdrawals`, same
+  // reasoning as BridgeDepositStats.mintedByAsset (the chain's
+  // `bridge_statistics` only tracks STEEM). Not status-filtered — includes
+  // REQUESTED/PROCESSED/REFUNDED alike, since the burn itself already
+  // happened by the time a withdrawal is indexed at all.
+  withdrawnByAsset: BridgeAssetTotal[]
 }
 
 export interface NameRecord {
@@ -318,6 +378,37 @@ export interface NameRegistration {
   validatorConfirmations: BridgeValidatorConfirmation[]
 }
 
+export interface BridgeParams {
+  bridgeEnabled: boolean
+  bridgeOutEnabled: boolean
+  gatewayAccount: string
+  bridgeConfirmationThreshold: string
+  minimumBridgeAmount: string
+  maximumBridgeAmount: string
+  depositTimeoutBlocks: string
+  nameServiceEnabled: boolean
+  nameRegistrationMinMillisteem: string
+  namePendingTimeoutBlocks: string
+  relayerStartBlock: string
+  bridgeFeeBps: number
+  withdrawalTimeoutBlocks: string
+}
+
+export interface OracleParams {
+  votePeriod: string
+  voteThreshold: string
+  rewardBand: string
+  missBand: string
+  whitelist: string[]
+}
+
+export interface ExchangeRate {
+  pair: string
+  rate: string
+  updateEpoch: string
+  updateTime: string
+}
+
 export interface ChainParamsResponse {
   staking: Record<string, unknown> | null
   mint: Record<string, unknown> | null
@@ -328,6 +419,8 @@ export interface ChainParamsResponse {
     depositParams: Record<string, unknown> | null
     tallyParams: Record<string, unknown> | null
   }
+  bridge: BridgeParams | null
+  oracle: OracleParams | null
 }
 
 export interface DenomMetadataResponse {

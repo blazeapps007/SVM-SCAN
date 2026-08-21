@@ -20,6 +20,7 @@ import { registerLiquidityPoolRoutes } from './routes/liquidityPools'
 import { registerBridgeDepositRoutes } from './routes/bridgeDeposits'
 import { registerBridgeWithdrawalRoutes } from './routes/bridgeWithdrawals'
 import { registerNameServiceRoutes } from './routes/nameService'
+import { registerOracleRoutes } from './routes/oracle'
 
 export interface AppContext {
   db: Db
@@ -51,6 +52,7 @@ export async function buildServer(
       registerBridgeDepositRoutes(api, context)
       registerBridgeWithdrawalRoutes(api, context)
       registerNameServiceRoutes(api, context)
+      registerOracleRoutes(api)
     },
     { prefix: '/api' }
   )

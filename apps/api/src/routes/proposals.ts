@@ -77,6 +77,8 @@ export function registerProposalRoutes(
         totalDeposit: doc.totalDeposit,
         finalTallyResult: doc.finalTallyResult,
         messages: doc.messages as ProposalDetailResponse['messages'],
+        expedited: doc.expedited,
+        failedReason: doc.failedReason,
       }
       return response
     }

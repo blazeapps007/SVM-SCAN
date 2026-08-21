@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import type { ChainParamsResponse } from '@dexplorer/shared'
+import type {
+  BridgeParams,
+  ChainParamsResponse,
+  OracleParams,
+} from '@dexplorer/shared'
 import type { AppContext } from '../server'
 import {
   CHAIN_PARAMS_COLLECTION,
@@ -33,6 +37,8 @@ export function registerParamsRoutes(
         depositParams: byId.get('govDeposit') ?? null,
         tallyParams: byId.get('govTally') ?? null,
       },
+      bridge: (byId.get('bridge') as BridgeParams | undefined) ?? null,
+      oracle: (byId.get('oracle') as OracleParams | undefined) ?? null,
     }
   })
 }

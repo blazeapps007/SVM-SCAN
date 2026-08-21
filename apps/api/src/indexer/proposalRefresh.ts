@@ -3,6 +3,8 @@ import { Tendermint37Client } from '@cosmjs/tendermint-rpc'
 import { proposalStatusToJSON } from 'cosmjs-types/cosmos/gov/v1/gov'
 import { decodeMsg } from '@dexplorer/shared'
 import { queryProposals, queryTallyResult } from '../chain/abci'
+import { fetchProposalExtra, type RawProposalExtra } from '../chain/govLcd'
+import { env } from '../config/env'
 import {
   PROPOSALS_COLLECTION,
   ProposalDoc,
@@ -58,6 +60,19 @@ export async function refreshProposals(
           }
         }
 
+        // The ABCI-decoded proposal above comes back with all four timing
+        // fields undefined on this chain (root cause unconfirmed — see
+        // govLcd.ts) even though the chain clearly has real values for them;
+        // the LCD does not have that problem, so prefer it when available.
+        let extra: RawProposalExtra | null = null
+        if (env.STEEMBRIDGE_LCD_URL) {
+          try {
+            extra = await fetchProposalExtra(env.STEEMBRIDGE_LCD_URL, id)
+          } catch (err) {
+            console.error(`Failed to fetch LCD extra for proposal ${id}:`, err)
+          }
+        }
+
         const doc: ProposalDoc = {
           id,
           title: proposal.title,
@@ -67,10 +82,13 @@ export async function refreshProposals(
           messages: proposal.messages.map((msg) =>
             decodeMsg(msg.typeUrl, msg.value)
           ),
-          submitTime: toDate(proposal.submitTime),
-          depositEndTime: toDate(proposal.depositEndTime),
-          votingStartTime: toDate(proposal.votingStartTime),
-          votingEndTime: toDate(proposal.votingEndTime),
+          submitTime: toDate(extra?.submit_time) ?? toDate(proposal.submitTime),
+          depositEndTime:
+            toDate(extra?.deposit_end_time) ?? toDate(proposal.depositEndTime),
+          votingStartTime:
+            toDate(extra?.voting_start_time) ?? toDate(proposal.votingStartTime),
+          votingEndTime:
+            toDate(extra?.voting_end_time) ?? toDate(proposal.votingEndTime),
           totalDeposit: proposal.totalDeposit.map((coin) => ({
             denom: coin.denom,
             amount: coin.amount,
@@ -83,6 +101,8 @@ export async function refreshProposals(
                 noWithVetoCount: tally.noWithVetoCount,
               }
             : null,
+          expedited: extra?.expedited ?? false,
+          failedReason: extra?.failed_reason ?? '',
           lastRefreshedAt: now,
         }
 

@@ -30,6 +30,7 @@ export interface RawSteemBridgeDeposit {
   mint_tx_hash: string
   created_at: string
   validator_confirmations: RawValidatorConfirmation[]
+  asset: string
 }
 
 export interface RawSteemBridgeWithdrawal {
@@ -42,12 +43,33 @@ export interface RawSteemBridgeWithdrawal {
   burn_tx_hash: string
   status: string
   created_at: string
+  asset: string
+  fee_millisteem: string
+  // Empty until status flips to PROCESSED.
+  steem_payout_txid: string
+  payout_op_index: number
+  // "0" until status flips to PROCESSED.
+  processed_at: string
+  // "0" unless this withdrawal auto-refunded on-chain after
+  // withdrawal_timeout_blocks without ever being attested.
+  refunded_at: string
+  validator_confirmations: RawValidatorConfirmation[]
 }
 
-export interface RawBridgeStatistics {
-  total_minted_asteem: string
-  total_burned_asteem: string
-  net_outstanding: string
+export interface RawBridgeParams {
+  bridge_enabled: boolean
+  bridge_out_enabled: boolean
+  gateway_account: string
+  bridge_confirmation_threshold: string
+  minimum_bridge_amount: string
+  maximum_bridge_amount: string
+  deposit_timeout_blocks: string
+  name_service_enabled: boolean
+  name_registration_min_millisteem: string
+  name_pending_timeout_blocks: string
+  relayer_start_block: string
+  bridge_fee_bps: number
+  withdrawal_timeout_blocks: string
 }
 
 export interface RawNameRecord {
@@ -199,13 +221,15 @@ export async function fetchRequestedWithdrawals(
   return { items: json.withdrawals, nextKey: json.pagination.next_key || null }
 }
 
-// GET /steemvm/steembridge/v1/bridge_statistics — chain-wide totals, no
-// pagination, single object.
-export async function fetchBridgeStatistics(
-  lcdUrl: string
-): Promise<RawBridgeStatistics> {
-  const url = `${lcdUrl}/steemvm/steembridge/v1/bridge_statistics`
-  return lcdGet<RawBridgeStatistics>(url, 'bridge_statistics')
+// GET /steemvm/steembridge/v1/params — module config: bridge enable flags,
+// confirmation threshold, min/max bridge amount, fee bps, timeouts. Verified
+// live. `gateway_account` here is display-only — the real gateway account is
+// a hardcoded chain constant ("svm.bank"), not something governance changes
+// by editing this field.
+export async function fetchBridgeParams(lcdUrl: string): Promise<RawBridgeParams> {
+  const url = `${lcdUrl}/steemvm/steembridge/v1/params`
+  const json = await lcdGet<{ params: RawBridgeParams }>(url, 'params')
+  return json.params
 }
 
 // GET /steemvm/steembridge/v1/name/{steem_account} — the current active

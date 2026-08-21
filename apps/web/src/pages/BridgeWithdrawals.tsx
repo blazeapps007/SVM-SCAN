@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FiRepeat } from 'react-icons/fi'
 import { useTheme } from '@/theme/ThemeProvider'
-import { trimHash, convertRawAmount } from '@/utils/helper'
+import { ThemeColors } from '@/theme/colors'
+import { trimHash, convertRawAmount, bridgeAssetSymbol } from '@/utils/helper'
 import type { BridgeWithdrawal } from '@dexplorer/shared'
 import {
   useBridgeWithdrawals,
@@ -13,14 +14,32 @@ import {
 const STATUS_TABS: { label: string; value: BridgeWithdrawalStatusFilter }[] = [
   { label: 'All', value: 'all' },
   { label: 'Requested', value: 'requested' },
+  { label: 'Processed', value: 'processed' },
+  { label: 'Refunded', value: 'refunded' },
 ]
 
 const STATUS_LABELS: Record<BridgeWithdrawal['status'], string> = {
   WITHDRAWAL_STATUS_REQUESTED: 'Requested',
+  WITHDRAWAL_STATUS_PROCESSED: 'Processed',
+  WITHDRAWAL_STATUS_REFUNDED: 'Refunded',
 }
 
-const formatAmount = (amountAsteem: string): string =>
-  `${convertRawAmount(amountAsteem, 18)} STEEM`
+const formatAmount = (amountAsteem: string, asset: string): string =>
+  `${convertRawAmount(amountAsteem, 18)} ${bridgeAssetSymbol(asset)}`
+
+const getStatusColor = (
+  status: BridgeWithdrawal['status'],
+  colors: ThemeColors
+): string => {
+  switch (status) {
+    case 'WITHDRAWAL_STATUS_PROCESSED':
+      return colors.status.success
+    case 'WITHDRAWAL_STATUS_REFUNDED':
+      return colors.status.error
+    default:
+      return colors.status.warning
+  }
+}
 
 const BridgeWithdrawals: React.FC = () => {
   const { colors } = useTheme()
@@ -41,18 +60,15 @@ const BridgeWithdrawals: React.FC = () => {
   return (
     <div className="space-y-5">
       {stats && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           {[
             { label: 'Total Withdrawals', value: stats.total.toLocaleString() },
             { label: 'Requested', value: stats.requested.toLocaleString() },
-            {
-              label: 'Total Minted',
-              value: `${convertRawAmount(stats.totalMintedAsteem, 18)} STEEM`,
-            },
-            {
-              label: 'Total Burned',
-              value: `${convertRawAmount(stats.totalBurnedAsteem, 18)} STEEM`,
-            },
+            { label: 'Processed', value: stats.processed.toLocaleString() },
+            ...stats.withdrawnByAsset.map((assetTotal) => ({
+              label: `Withdrawn (${bridgeAssetSymbol(assetTotal.asset)})`,
+              value: `${convertRawAmount(assetTotal.amountMillisteem, 3)} ${bridgeAssetSymbol(assetTotal.asset)}`,
+            })),
           ].map((stat) => (
             <div
               key={stat.label}
@@ -119,6 +135,9 @@ const BridgeWithdrawals: React.FC = () => {
                   Amount
                 </th>
                 <th className="reference-table-header px-5 py-4 text-left">
+                  Fee
+                </th>
+                <th className="reference-table-header px-5 py-4 text-left">
                   Status
                 </th>
                 <th className="reference-table-header px-5 py-4 text-right">
@@ -163,15 +182,24 @@ const BridgeWithdrawals: React.FC = () => {
                       className="font-mono text-sm"
                       style={{ color: colors.text.primary }}
                     >
-                      {formatAmount(withdrawal.amountAsteem)}
+                      {formatAmount(withdrawal.amountAsteem, withdrawal.asset)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span
+                      className="font-mono text-xs"
+                      style={{ color: colors.text.tertiary }}
+                    >
+                      {convertRawAmount(withdrawal.feeMillisteem, 3)}{' '}
+                      {bridgeAssetSymbol(withdrawal.asset)}
                     </span>
                   </td>
                   <td className="px-5 py-4">
                     <span
                       className="reference-pill"
                       style={{
-                        backgroundColor: `${colors.status.warning}20`,
-                        color: colors.status.warning,
+                        backgroundColor: `${getStatusColor(withdrawal.status, colors)}20`,
+                        color: getStatusColor(withdrawal.status, colors),
                       }}
                     >
                       {STATUS_LABELS[withdrawal.status] ?? withdrawal.status}

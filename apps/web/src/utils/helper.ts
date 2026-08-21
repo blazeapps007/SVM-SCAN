@@ -229,6 +229,27 @@ export const formatTokenAmount = (
   return `${convertRawAmount(rawAmount, decimalsNum)}${suffix}`
 }
 
+// The steembridge module supports more than one bridged asset (currently
+// STEEM and SBD, both minted 1:1 at 18 decimals — just under a different
+// denom prefix, asteem vs asbd) — this strips the "BRIDGE_ASSET_" prefix off
+// a deposit/withdrawal's `asset` field to get the display symbol, e.g.
+// "BRIDGE_ASSET_SBD" -> "SBD".
+export const bridgeAssetSymbol = (asset: string): string =>
+  asset.replace('BRIDGE_ASSET_', '')
+
+// Splits a Cosmos SDK bank-module event attribute value like
+// "998000000000000000asteem" into its numeric amount and trailing denom —
+// `coin_spent`/`coin_received`/`transfer`/`coinbase` events concatenate the
+// two into one string, unlike a Coin object elsewhere which already has
+// separate fields.
+export function parseCoinString(
+  value: string
+): { amount: string; denom: string } | null {
+  const match = value.match(/^(\d+)([a-zA-Z][a-zA-Z0-9/-]*)$/)
+  if (!match) return null
+  return { amount: match[1], denom: match[2] }
+}
+
 // Helper function to safely serialize objects with BigInt values
 export const safeStringify = (obj: unknown, space?: number): string => {
   return JSON.stringify(

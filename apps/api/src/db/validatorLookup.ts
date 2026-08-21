@@ -25,7 +25,7 @@ export async function resolveValidatorMonikers(
 
 // Resolves a single address to a moniker, accepting either a valoper
 // address directly or a plain account address (re-prefixed via
-// accountToValoperAddress first) — used for the one-off MsgSubmitSteemDeposit
+// accountToValoperAddress first) — used for the one-off MsgAttestDeposit
 // "validator" field on the transaction detail page, which is account-form.
 export async function resolveValidatorMoniker(
   db: Db,

@@ -1,5 +1,10 @@
 import type { FastifyInstance } from 'fastify'
-import type { BridgeDeposit, BridgeDepositStats } from '@dexplorer/shared'
+import type {
+  BridgeAssetCount,
+  BridgeAssetTotal,
+  BridgeDeposit,
+  BridgeDepositStats,
+} from '@dexplorer/shared'
 import type { AppContext } from '../server'
 import {
   BRIDGE_DEPOSITS_COLLECTION,
@@ -53,6 +58,7 @@ function toDeposit(
       moniker: monikers.get(c.validatorAddress) ?? null,
       timestamp: c.timestamp,
     })),
+    asset: doc.asset,
   }
 }
 
@@ -63,13 +69,44 @@ export function registerBridgeDepositRoutes(
   const collection = db.collection<BridgeDepositDoc>(BRIDGE_DEPOSITS_COLLECTION)
 
   app.get('/bridge-deposits/stats', async (): Promise<BridgeDepositStats> => {
-    const [pending, minted, unclaimable, total] = await Promise.all([
-      collection.countDocuments({ status: 'DEPOSIT_STATUS_PENDING' }),
-      collection.countDocuments({ status: 'DEPOSIT_STATUS_MINTED' }),
-      collection.countDocuments({ status: 'DEPOSIT_STATUS_UNCLAIMABLE' }),
-      collection.countDocuments({}),
-    ])
-    return { pending, minted, unclaimable, total }
+    const [pending, minted, unclaimable, total, countByAsset, mintedByAsset] =
+      await Promise.all([
+        collection.countDocuments({ status: 'DEPOSIT_STATUS_PENDING' }),
+        collection.countDocuments({ status: 'DEPOSIT_STATUS_MINTED' }),
+        collection.countDocuments({ status: 'DEPOSIT_STATUS_UNCLAIMABLE' }),
+        collection.countDocuments({}),
+        // Count of deposits (any status), grouped by asset.
+        collection
+          .aggregate<BridgeAssetCount>([
+            { $group: { _id: '$asset', count: { $sum: 1 } } },
+            { $project: { _id: 0, asset: '$_id', count: 1 } },
+            { $sort: { asset: 1 } },
+          ])
+          .toArray(),
+        // $toDecimal avoids float precision loss summing string-encoded
+        // amounts — millisteem values are well within Decimal128's 34
+        // significant digits.
+        collection
+          .aggregate<BridgeAssetTotal>([
+            { $match: { status: 'DEPOSIT_STATUS_MINTED' } },
+            {
+              $group: {
+                _id: '$asset',
+                sum: { $sum: { $toDecimal: '$amountMillisteem' } },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                asset: '$_id',
+                amountMillisteem: { $toString: '$sum' },
+              },
+            },
+            { $sort: { asset: 1 } },
+          ])
+          .toArray(),
+      ])
+    return { pending, minted, unclaimable, total, countByAsset, mintedByAsset }
   })
 
   app.get<{ Querystring: PageQuery & { status?: string } }>(

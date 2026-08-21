@@ -19,9 +19,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { height: 1 }, name: 'height' },
     { key: { timestamp: -1 }, name: 'timestamp_desc' },
     { key: { senders: 1 }, name: 'senders' },
+    { key: { messageTypes: 1 }, name: 'message_types' },
     {
       key: { ibcTransfer: 1 },
       name: 'ibc_transfer_sparse',
+      sparse: true,
+    },
+    {
+      // Lets GET /transactions/:hash resolve a MetaMask-style EVM tx hash
+      // (0x..., 32 bytes) to the SVM tx that wraps it as a MsgEthereumTx —
+      // only non-EVM txs lack this field, hence sparse.
+      key: { 'messages.data.hash': 1 },
+      name: 'evm_tx_hash_sparse',
       sparse: true,
     },
   ])

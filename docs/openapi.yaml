@@ -73,6 +73,12 @@ tags:
       user burns `asteem` via `MsgBridgeOut`, creating an immutable
       withdrawal record. There is currently no automated Steem-side payout —
       this is a queue for validators to relay manually.
+  - name: Oracle
+    description: |
+      The `oracledata` module (`steemvm.oracle.data.v1`) — commit-reveal
+      validator voting that produces power-weighted-median exchange rates for
+      the pairs the `steembridge` module needs. **Not backed by MongoDB** —
+      `/oracle/exchange-rates` proxies the LCD live, same as Name Service.
   - name: Name Service (SVMNS)
     description: |
       Steem Virtual Machine Name Service — links a Steem username to an SVM
@@ -221,6 +227,10 @@ paths:
       parameters:
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/perPage'
+        - name: type
+          in: query
+          description: Filter to transactions containing a message of this exact typeUrl (e.g. `/steemvm.oracle.data.v1.MsgAggregateExchangeRateVote`). See `GET /transactions/message-types` for the full set currently indexed.
+          schema: { type: string }
       responses:
         '200':
           description: OK
@@ -242,11 +252,33 @@ paths:
                     timestamp: '2026-08-13T23:22:00.430Z'
                     code: 0
                     success: true
-                    messageTypes: ['/steemvm.steembridge.v1.MsgSubmitSteemDeposit']
+                    messageTypes: ['/steemvm.steembridge.v1.MsgAttestDeposit']
                     fee: []
                     gasUsed: '68580'
                     gasWanted: '600000'
                 pagination: { page: 0, perPage: 1, total: 9064 }
+
+  /transactions/message-types:
+    get:
+      tags: [Transactions]
+      operationId: listTransactionMessageTypes
+      summary: Every distinct message typeUrl currently indexed
+      description: Powers the type filter dropdown on the transactions list — index-covered `distinct()` over `transactions.messageTypes`, sorted alphabetically.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+              example:
+                - /cosmos.bank.v1beta1.MsgSend
+                - /cosmos.staking.v1beta1.MsgDelegate
+                - /steemvm.oracle.data.v1.MsgAggregateExchangeRatePrevote
+                - /steemvm.oracle.data.v1.MsgAggregateExchangeRateVote
+                - /steemvm.steembridge.v1.MsgAttestDeposit
+                - /steemvm.steembridge.v1.MsgBridgeOut
 
   /transactions/{hash}:
     get:
@@ -257,10 +289,23 @@ paths:
         Messages are decoded server-side (see `@dexplorer/shared`'s message
         registry) — a type this API doesn't have a named decoder for still
         decodes, just with generic `field_1`/`field_2`/... keys instead of
-        real names. Two message types get extra enrichment merged into
-        `data`: `MsgSubmitSteemDeposit`/`MsgSubmitNameRegistration` get an
-        `oracleMoniker` (the attesting validator's moniker), and
-        `MsgConfirmName` gets a `linkedSteemAccount`.
+        real names. Five message types get extra enrichment merged into
+        `data`: `MsgAttestDeposit`/`MsgSubmitNameRegistration`/
+        `MsgAttestWithdrawalPayout`/`MsgAggregateExchangeRateVote`/
+        `MsgAggregateExchangeRatePrevote` get an `oracleMoniker` (the
+        attesting validator's moniker), and `MsgConfirmName` gets a
+        `linkedSteemAccount`. `moduleAccounts` resolves any bech32 address in
+        `events` to its Cosmos SDK module account name, where applicable.
+
+
+        `{hash}` also accepts an EVM-format tx hash (`0x` + 64 hex chars —
+        what MetaMask/an EVM wallet links to) for a `MsgEthereumTx`: it's
+        resolved to the SVM tx that wraps it via the decoded inner hash, so
+        the response's own `hash` field is still the outer Tendermint hash,
+        not what was requested. If no such wrapper is indexed yet, this
+        endpoint 404s even though the tx may still be visible via
+        `GET /evm/tx/{hash}` directly (that endpoint queries the chain's EVM
+        JSON-RPC live, independent of this indexer).
       parameters:
         - $ref: '#/components/parameters/hash'
       responses:
@@ -276,7 +321,7 @@ paths:
                 timestamp: '2026-08-12T00:32:29.334Z'
                 code: 0
                 success: true
-                messageTypes: ['/steemvm.steembridge.v1.MsgSubmitSteemDeposit']
+                messageTypes: ['/steemvm.steembridge.v1.MsgAttestDeposit']
                 fee: []
                 gasUsed: '92488'
                 gasWanted: '600000'
@@ -284,7 +329,7 @@ paths:
                 memo: ''
                 chainId: steemvm
                 messages:
-                  - typeUrl: /steemvm.steembridge.v1.MsgSubmitSteemDeposit
+                  - typeUrl: /steemvm.steembridge.v1.MsgAttestDeposit
                     data:
                       validator: steem1u96tympny5r8m76psg5jr7fm8kcrg76w3rmpng
                       txid: 5da85737d515500e6cb23a02fd981263d8c7de7f
@@ -303,6 +348,10 @@ paths:
                       - { key: txid, value: 5da85737d515500e6cb23a02fd981263d8c7de7f }
                 senders: ['steem1u96tympny5r8m76psg5jr7fm8kcrg76w3rmpng']
                 ibcTransfer: null
+                moduleAccounts:
+                  steem10a2y3nc3kqn7cm2lhlkgfgt7du70rstwm0ul3x: steemblackhole
+                  steem189zqgygvhf5j56st8698qa9nz6jjhu45d089kz: bridge_reward
+                  steem17xpfvakm2amg962yls6f84z3kell8c5lxvg9x8: fee_collector
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -424,12 +473,12 @@ paths:
                     $ref: '#/components/schemas/PaginationMeta'
               example:
                 data:
-                  - id: 7
-                    title: 'SteemVM v0.0.2-Beta1 + gateway svm.bank'
-                    status: PROPOSAL_STATUS_PASSED
-                    votingStartTime: null
-                    votingEndTime: null
-                    submitTime: null
+                  - id: 1
+                    title: Set EVM min gas price to 0.0001 STEEM/gas
+                    status: PROPOSAL_STATUS_VOTING_PERIOD
+                    votingStartTime: '2026-08-21T10:12:43.401Z'
+                    votingEndTime: '2026-08-23T10:12:43.401Z'
+                    submitTime: '2026-08-21T10:12:43.401Z'
                 pagination: { page: 0, perPage: 1, total: 7 }
 
   /proposals/stats:
@@ -466,24 +515,35 @@ paths:
                 $ref: '#/components/schemas/ProposalDetailResponse'
               example:
                 id: 1
-                title: 'Activate gov precompile (0x...0805)'
-                status: PROPOSAL_STATUS_PASSED
-                votingStartTime: null
-                votingEndTime: null
-                submitTime: null
-                summary: Add the already-registered gov precompile to active_static_precompiles so gov is callable from EVM/MetaMask.
-                proposer: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
-                depositEndTime: null
+                title: Set EVM min gas price to 0.0001 STEEM/gas
+                status: PROPOSAL_STATUS_VOTING_PERIOD
+                votingStartTime: '2026-08-21T10:12:43.401Z'
+                votingEndTime: '2026-08-23T10:12:43.401Z'
+                submitTime: '2026-08-21T10:12:43.401Z'
+                summary: Floors the EVM feemarket base fee at 100000000000000 asteem (0.0001 STEEM) per gas unit.
+                proposer: steem1am0j95eum7tezy8n9fwjrj0nldkwaskg9xphh8
+                depositEndTime: '2026-08-23T10:12:43.401Z'
                 totalDeposit:
-                  - { denom: asteem, amount: '10000000000000000000' }
+                  - { denom: asteem, amount: '10000000' }
                 finalTallyResult:
-                  yesCount: '605909237228765040000000'
+                  yesCount: '100000000000000000000000'
                   noCount: '0'
                   abstainCount: '0'
                   noWithVetoCount: '0'
+                expedited: false
+                failedReason: ''
                 messages:
-                  - typeUrl: /cosmos.evm.vm.v1.MsgUpdateParams
-                    data: { field_1: steem10d07y265gmmuvt4z0w9aw880jnsr700jvhcqmf }
+                  - typeUrl: /cosmos.evm.feemarket.v1.MsgUpdateParams
+                    data:
+                      authority: steem10d07y265gmmuvt4z0w9aw880jnsr700jvhcqmf
+                      params:
+                        noBaseFee: false
+                        baseFeeChangeDenominator: 8
+                        elasticityMultiplier: 2
+                        enableHeight: '0'
+                        baseFee: '7.000000000000000000'
+                        minGasPrice: '100000000000000.000000000000000000'
+                        minGasMultiplier: '0.500000000000000000'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -510,7 +570,7 @@ paths:
                   $ref: '#/components/schemas/RecentAccount'
               example:
                 - address: steem1eldczteraanqjcp34wfwejavunsuavejaxv29q
-                  lastMessageType: /steemvm.steembridge.v1.MsgSubmitSteemDeposit
+                  lastMessageType: /steemvm.steembridge.v1.MsgAttestDeposit
                   lastActivityTime: '2026-08-13T23:22:00.430Z'
 
   /accounts/{address}:
@@ -581,7 +641,7 @@ paths:
                     timestamp: '2026-08-13T23:21:14.631Z'
                     code: 0
                     success: true
-                    messageTypes: ['/steemvm.steembridge.v1.MsgSubmitSteemDeposit']
+                    messageTypes: ['/steemvm.steembridge.v1.MsgAttestDeposit']
                     fee: []
                     gasUsed: '94216'
                     gasWanted: '600000'
@@ -632,7 +692,8 @@ paths:
       tags: [Params]
       operationId: getParams
       summary: Chain module parameters
-      description: Aggregate of staking/mint/distribution/slashing/gov params, refreshed periodically (not per-block — these barely change).
+      description: |
+        Aggregate of staking/mint/distribution/slashing/gov params (queried via ABCI, refreshed periodically) plus `bridge`/`oracle` params (queried over LCD from the chain's custom `steembridge`/`oracledata` modules — `null` when `STEEMBRIDGE_LCD_URL` isn't configured).
       responses:
         '200':
           description: OK
@@ -649,6 +710,65 @@ paths:
                   votingParams: { votingPeriod: { seconds: 172800, nanos: 0 } }
                   depositParams: { minDeposit: [{ denom: asteem, amount: '10000000000000000000' }] }
                   tallyParams: { quorum: '0.334000000000000000', threshold: '0.500000000000000000' }
+                bridge:
+                  bridgeEnabled: true
+                  bridgeOutEnabled: true
+                  gatewayAccount: svm.bank
+                  bridgeConfirmationThreshold: '0.666666666666666667'
+                  minimumBridgeAmount: '0'
+                  maximumBridgeAmount: '0'
+                  depositTimeoutBlocks: '50400'
+                  nameServiceEnabled: true
+                  nameRegistrationMinMillisteem: '1'
+                  namePendingTimeoutBlocks: '50400'
+                  relayerStartBlock: '0'
+                  bridgeFeeBps: 25
+                  withdrawalTimeoutBlocks: '50400'
+                oracle:
+                  votePeriod: '600'
+                  voteThreshold: '0.500000000000000000'
+                  rewardBand: '0.020000000000000000'
+                  missBand: '0.030000000000000000'
+                  whitelist: [STEEM/USD_External, STEEM/SBD_Internal, SBD/USD_External, Price_Feed]
+
+  /oracle/exchange-rates:
+    get:
+      tags: [Oracle]
+      operationId: listOracleExchangeRates
+      summary: Current finalized exchange rate for every whitelisted pair
+      description: Live LCD proxy (30s cache), not indexed — rates only change once per oracle vote period.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExchangeRate'
+              example:
+                - pair: Price_Feed
+                  rate: '0.104502035447605955'
+                  updateEpoch: '4'
+                  updateTime: '1787225133'
+                - pair: SBD/USD_External
+                  rate: '0.367276276618312100'
+                  updateEpoch: '4'
+                  updateTime: '1787225133'
+                - pair: STEEM/SBD_Internal
+                  rate: '0.093000000000000000'
+                  updateEpoch: '4'
+                  updateTime: '1787225133'
+                - pair: STEEM/USD_External
+                  rate: '0.037165851221533240'
+                  updateEpoch: '4'
+                  updateTime: '1787225133'
+        '503':
+          description: STEEMBRIDGE_LCD_URL isn't configured on this deployment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { error: 'Oracle data unavailable' }
 
   /denoms:
     get:
@@ -836,13 +956,15 @@ paths:
                       - validatorAddress: steemvaloper1u96tympny5r8m76psg5jr7fm8kcrg76wms5jgt
                         moniker: dhaka.witness
                         timestamp: '1786663267'
+                    asset: BRIDGE_ASSET_STEEM
                 pagination: { page: 0, perPage: 1, total: 1743 }
 
   /bridge-deposits/stats:
     get:
       tags: [Bridge Deposits]
       operationId: getBridgeDepositStats
-      summary: Deposit counts by status
+      summary: Deposit counts by status, plus minted totals per asset
+      description: '`mintedByAsset` is computed from our own indexed `bridgeDeposits` (MongoDB `$sum`/`$toDecimal` aggregation over MINTED deposits, grouped by `asset`) — not a chain LCD call, since the chain''s `bridge_statistics` only tracks STEEM. Excludes SVMNS name-registration mints (`MsgSubmitNameRegistration` also mints asteem 1:1 on confirmation but isn''t tracked as a deposit).'
       responses:
         '200':
           description: OK
@@ -850,7 +972,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BridgeDepositStats'
-              example: { pending: 2, minted: 1743, unclaimable: 113, total: 1861 }
+              example:
+                pending: 2
+                minted: 1743
+                unclaimable: 113
+                total: 1861
+                mintedByAsset:
+                  - asset: BRIDGE_ASSET_SBD
+                    amountMillisteem: '1'
+                  - asset: BRIDGE_ASSET_STEEM
+                    amountMillisteem: '30014001'
 
   /bridge-deposits/{idOrTxid}:
     get:
@@ -891,6 +1022,7 @@ paths:
                   - validatorAddress: steemvaloper107662cdhfe760n2lk9yhsv8fdve3pkzh4gyrhl
                     moniker: blaze.apps
                     timestamp: '1784211183'
+                asset: BRIDGE_ASSET_STEEM
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -905,7 +1037,7 @@ paths:
         - $ref: '#/components/parameters/perPage'
         - name: status
           in: query
-          schema: { type: string, enum: [requested] }
+          schema: { type: string, enum: [requested, processed, refunded] }
       responses:
         '200':
           description: OK
@@ -922,23 +1054,33 @@ paths:
                     $ref: '#/components/schemas/PaginationMeta'
               example:
                 data:
-                  - id: '2'
-                    sender: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                  - id: '1'
+                    sender: steem1am0j95eum7tezy8n9fwjrj0nldkwaskg9xphh8
                     destinationSteemAccount: blaze.apps
-                    amountAsteem: '1000000000000000000000'
-                    amountMillisteem: '1000000'
-                    memo: Bridge out to Steem
-                    burnTxHash: 2bedd554ae62c4c8c21d5530f006f28f6703581afe33f5d2f5f0607398c4c003
-                    status: WITHDRAWAL_STATUS_REQUESTED
-                    createdAtHeight: '173386'
-                pagination: { page: 0, perPage: 1, total: 3 }
+                    amountAsteem: '1000000000000000000'
+                    amountMillisteem: '998'
+                    memo: test withdrawal
+                    burnTxHash: 6625728b191751a5b488824f8141b7169e9e85f4d527a5e9c0f13a17a091a693
+                    status: WITHDRAWAL_STATUS_PROCESSED
+                    createdAtHeight: '10746'
+                    asset: BRIDGE_ASSET_STEEM
+                    feeMillisteem: '2'
+                    steemPayoutTxid: efcf2883481218cc52ca111b731b743ac6f8ff91
+                    payoutOpIndex: 0
+                    processedAtHeight: '10767'
+                    refundedAtHeight: '0'
+                    validatorConfirmations:
+                      - validatorAddress: steemvaloper1am0j95eum7tezy8n9fwjrj0nldkwaskg04wyvy
+                        moniker: null
+                        timestamp: '1787267155'
+                pagination: { page: 0, perPage: 1, total: 2 }
 
   /bridge-withdrawals/stats:
     get:
       tags: [Bridge Withdrawals]
       operationId: getBridgeWithdrawalStats
-      summary: Withdrawal counts and chain-wide bridge totals
-      description: The `total*Asteem`/`netOutstandingAsteem` fields come from a live `bridge_statistics` LCD call, not local counts.
+      summary: Withdrawal counts, plus withdrawn totals per asset
+      description: '`withdrawnByAsset` is computed from our own indexed `bridgeWithdrawals` (MongoDB `$sum`/`$toDecimal` aggregation, grouped by `asset`) — not a chain LCD call, since the chain''s `bridge_statistics` only tracks STEEM. Not status-filtered: includes REQUESTED/PROCESSED/REFUNDED alike, since the burn already happened by the time a withdrawal is indexed at all.'
       responses:
         '200':
           description: OK
@@ -947,11 +1089,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/BridgeWithdrawalStats'
               example:
-                total: 3
-                requested: 3
-                totalMintedAsteem: '1018234490000000000000000'
-                totalBurnedAsteem: '3000000000000000000000'
-                netOutstandingAsteem: '1015234490000000000000000'
+                total: 2
+                requested: 0
+                processed: 2
+                withdrawnByAsset:
+                  - asset: BRIDGE_ASSET_STEEM
+                    amountMillisteem: '1996'
 
   /bridge-withdrawals/{idOrBurnTxHash}:
     get:
@@ -972,15 +1115,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/BridgeWithdrawal'
               example:
-                id: '2'
-                sender: steem107662cdhfe760n2lk9yhsv8fdve3pkzhlmtsvu
+                id: '0'
+                sender: steem1am0j95eum7tezy8n9fwjrj0nldkwaskg9xphh8
                 destinationSteemAccount: blaze.apps
-                amountAsteem: '1000000000000000000000'
-                amountMillisteem: '1000000'
-                memo: Bridge out to Steem
-                burnTxHash: 2bedd554ae62c4c8c21d5530f006f28f6703581afe33f5d2f5f0607398c4c003
-                status: WITHDRAWAL_STATUS_REQUESTED
-                createdAtHeight: '173386'
+                amountAsteem: '1000000000000000000'
+                amountMillisteem: '998'
+                memo: test withdrawal
+                burnTxHash: 5302a993cc263b147f41d46421be66fd1c94bb6cb05a0f895d692cbf9534c71e
+                status: WITHDRAWAL_STATUS_PROCESSED
+                createdAtHeight: '10732'
+                asset: BRIDGE_ASSET_STEEM
+                feeMillisteem: '2'
+                steemPayoutTxid: 64ecd95b9a52e8557eedbeacb693d87e1c005e8e
+                payoutOpIndex: 0
+                processedAtHeight: '10764'
+                refundedAtHeight: '0'
+                validatorConfirmations:
+                  - validatorAddress: steemvaloper1am0j95eum7tezy8n9fwjrj0nldkwaskg04wyvy
+                    moniker: null
+                    timestamp: '1787267140'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1359,7 +1512,11 @@ components:
               oneOf:
                 - $ref: '#/components/schemas/IBCTransferFields'
                 - type: 'null'
-          required: [log, memo, chainId, messages, events, senders, ibcTransfer]
+            moduleAccounts:
+              type: object
+              additionalProperties: { type: string }
+              description: bech32 address -> Cosmos SDK module account name (e.g. "fee_collector", "bridge_reward", "steemblackhole"), for labeling module accounts that show up as a sender/receiver in `events`. Empty when STEEMBRIDGE_LCD_URL isn't configured.
+          required: [log, memo, chainId, messages, events, senders, ibcTransfer, moduleAccounts]
 
     ValidatorSummary:
       type: object
@@ -1443,7 +1600,9 @@ components:
             messages:
               type: array
               items: { $ref: '#/components/schemas/DecodeMsg' }
-          required: [summary, proposer, depositEndTime, totalDeposit, finalTallyResult, messages]
+            expedited: { type: boolean, description: Gov v1's expedited-proposal path (shorter voting period, higher pass threshold). }
+            failedReason: { type: string, description: 'Set only if status is PROPOSAL_STATUS_FAILED (passed, but its messages then failed to execute on-chain); empty string otherwise, including for PROPOSAL_STATUS_REJECTED.' }
+          required: [summary, proposer, depositEndTime, totalDeposit, finalTallyResult, messages, expedited, failedReason]
 
     ProposalStats:
       type: object
@@ -1605,7 +1764,15 @@ components:
         validatorConfirmations:
           type: array
           items: { $ref: '#/components/schemas/BridgeValidatorConfirmation' }
-      required: [id, txid, opIndex, steemBlock, steemTimestamp, steemSender, gatewayAccount, amountMillisteem, memo, derivedDestination, destinationType, status, minted, mintedAt, mintTxHash, createdAtHeight, validatorConfirmations]
+        asset: { type: string, enum: [BRIDGE_ASSET_STEEM, BRIDGE_ASSET_SBD], description: Both values are live on this chain — mints `asteem` or `asbd` respectively, both at 18 decimals under the same `amountMillisteem` numeric convention. Never assume STEEM; always read this field for the display unit. }
+      required: [id, txid, opIndex, steemBlock, steemTimestamp, steemSender, gatewayAccount, amountMillisteem, memo, derivedDestination, destinationType, status, minted, mintedAt, mintTxHash, createdAtHeight, validatorConfirmations, asset]
+
+    BridgeAssetTotal:
+      type: object
+      properties:
+        asset: { type: string, enum: [BRIDGE_ASSET_STEEM, BRIDGE_ASSET_SBD] }
+        amountMillisteem: { type: string, description: 3-decimal convention, same as BridgeDeposit/BridgeWithdrawal's amountMillisteem. }
+      required: [asset, amountMillisteem]
 
     BridgeDepositStats:
       type: object
@@ -1613,8 +1780,12 @@ components:
         pending: { type: integer }
         minted: { type: integer }
         unclaimable: { type: integer }
-        total: { type: integer }
-      required: [pending, minted, unclaimable, total]
+        total: { type: integer, description: Count of deposits indexed as `bridgeDeposits` docs — does not include SVMNS name-registration mints. }
+        mintedByAsset:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeAssetTotal' }
+          description: Sum of amountMillisteem across MINTED deposits, grouped by asset — computed from our own indexed data, not a chain LCD call. Excludes SVMNS name-registration mints.
+      required: [pending, minted, unclaimable, total, mintedByAsset]
 
     BridgeWithdrawal:
       type: object
@@ -1626,19 +1797,30 @@ components:
         amountMillisteem: { type: string, description: Convenience 3-decimal duplicate of amountAsteem. }
         memo: { type: string }
         burnTxHash: { type: string, description: 'SVM chain tx hash (indexed — links to GET /transactions/{hash}).' }
-        status: { type: string, enum: [WITHDRAWAL_STATUS_REQUESTED] }
+        status: { type: string, enum: [WITHDRAWAL_STATUS_REQUESTED, WITHDRAWAL_STATUS_PROCESSED, WITHDRAWAL_STATUS_REFUNDED] }
         createdAtHeight: { type: string }
-      required: [id, sender, destinationSteemAccount, amountAsteem, amountMillisteem, memo, burnTxHash, status, createdAtHeight]
+        asset: { type: string, enum: [BRIDGE_ASSET_STEEM, BRIDGE_ASSET_SBD], description: Both values are live on this chain — see BridgeDeposit's `asset` description. }
+        feeMillisteem: { type: string, description: Protocol fee withheld from the withdrawal, sent to the bridge_reward module account. }
+        steemPayoutTxid: { type: string, description: 'The Steem-side payout transaction id, set once status is PROCESSED. Empty string until then.' }
+        payoutOpIndex: { type: integer }
+        processedAtHeight: { type: string, description: 'SVM block height the withdrawal was marked PROCESSED at; "0" until then.' }
+        refundedAtHeight: { type: string, description: 'SVM block height an unconfirmed withdrawal auto-refunded at past the timeout, without ever being attested; "0" unless that happened.' }
+        validatorConfirmations:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeValidatorConfirmation' }
+      required: [id, sender, destinationSteemAccount, amountAsteem, amountMillisteem, memo, burnTxHash, status, createdAtHeight, asset, feeMillisteem, steemPayoutTxid, payoutOpIndex, processedAtHeight, refundedAtHeight, validatorConfirmations]
 
     BridgeWithdrawalStats:
       type: object
       properties:
         total: { type: integer }
         requested: { type: integer }
-        totalMintedAsteem: { type: string }
-        totalBurnedAsteem: { type: string }
-        netOutstandingAsteem: { type: string }
-      required: [total, requested, totalMintedAsteem, totalBurnedAsteem, netOutstandingAsteem]
+        processed: { type: integer }
+        withdrawnByAsset:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeAssetTotal' }
+          description: Sum of amountMillisteem across every indexed withdrawal, grouped by asset — computed from our own indexed data, not a chain LCD call. Not status-filtered.
+      required: [total, requested, processed, withdrawnByAsset]
 
     NameRecord:
       type: object
@@ -1659,7 +1841,7 @@ components:
         steemTimestamp: { type: string, description: 'ISO-8601 UTC, or the literal "genesis" for a genesis-seeded registration.' }
         steemAccount: { type: string }
         gatewayAccount: { type: string }
-        amountMillisteem: { type: string }
+        amountMillisteem: { type: string, description: 'STEEM sent alongside the registration request — minted to `derivedDestination` on confirmation, same mechanism as a bridge deposit. Not a fee; nothing is withheld.' }
         memo: { type: string }
         derivedDestination: { type: string }
         destinationType: { type: string, enum: [DESTINATION_TYPE_NONE, DESTINATION_TYPE_COSMOS, DESTINATION_TYPE_EVM] }
@@ -1686,7 +1868,57 @@ components:
             votingParams: { type: [object, 'null'], additionalProperties: true }
             depositParams: { type: [object, 'null'], additionalProperties: true }
             tallyParams: { type: [object, 'null'], additionalProperties: true }
-      required: [staking, mint, distribution, slashing, gov]
+        bridge:
+          oneOf:
+            - $ref: '#/components/schemas/BridgeParams'
+            - type: 'null'
+        oracle:
+          oneOf:
+            - $ref: '#/components/schemas/OracleParams'
+            - type: 'null'
+      required: [staking, mint, distribution, slashing, gov, bridge, oracle]
+
+    BridgeParams:
+      type: object
+      description: The `steembridge` module's own Params query (over LCD, not ABCI) — `null` when `STEEMBRIDGE_LCD_URL` isn't configured.
+      properties:
+        bridgeEnabled: { type: boolean }
+        bridgeOutEnabled: { type: boolean }
+        gatewayAccount: { type: string, description: 'Display-only — the real gateway account is a hardcoded chain constant ("svm.bank"), not governance-configurable via this field.' }
+        bridgeConfirmationThreshold: { type: string, description: Decimal string (0-1) — share of bonded power required before a deposit mints. }
+        minimumBridgeAmount: { type: string, description: 'asteem, 18 decimals. "0" means no minimum.' }
+        maximumBridgeAmount: { type: string, description: 'asteem, 18 decimals. "0" means no maximum.' }
+        depositTimeoutBlocks: { type: string }
+        nameServiceEnabled: { type: boolean }
+        nameRegistrationMinMillisteem: { type: string }
+        namePendingTimeoutBlocks: { type: string }
+        relayerStartBlock: { type: string }
+        bridgeFeeBps: { type: integer, description: Fee in basis points (25 = 0.25%). }
+        withdrawalTimeoutBlocks: { type: string, description: Blocks a withdrawal can stay REQUESTED before it auto-refunds on-chain without ever being attested as paid. }
+      required: [bridgeEnabled, bridgeOutEnabled, gatewayAccount, bridgeConfirmationThreshold, minimumBridgeAmount, maximumBridgeAmount, depositTimeoutBlocks, nameServiceEnabled, nameRegistrationMinMillisteem, namePendingTimeoutBlocks, relayerStartBlock, bridgeFeeBps, withdrawalTimeoutBlocks]
+
+    OracleParams:
+      type: object
+      description: The `oracledata` module's Params query (over LCD) — `null` when `STEEMBRIDGE_LCD_URL` isn't configured.
+      properties:
+        votePeriod: { type: string, description: Blocks between each price-feed aggregation round. }
+        voteThreshold: { type: string, description: Decimal string (0-1) — share of bonded power required to finalize a rate. }
+        rewardBand: { type: string, description: Decimal string — tolerance around the median vote that still earns a reward. }
+        missBand: { type: string, description: Decimal string — tolerance around the median vote before a validator is marked as missing. }
+        whitelist:
+          type: array
+          items: { type: string }
+          description: Whitelisted price pairs, e.g. STEEM/USD_External.
+      required: [votePeriod, voteThreshold, rewardBand, missBand, whitelist]
+
+    ExchangeRate:
+      type: object
+      properties:
+        pair: { type: string }
+        rate: { type: string, description: Power-weighted-median rate, as a decimal string. }
+        updateEpoch: { type: string, description: Internal aggregation round counter, not a wall-clock value. }
+        updateTime: { type: string, description: Unix seconds. }
+      required: [pair, rate, updateEpoch, updateTime]
 
     DenomMetadataResponse:
       type: object

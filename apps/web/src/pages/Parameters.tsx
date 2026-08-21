@@ -6,12 +6,20 @@ import {
   FiUsers,
   FiCheckCircle,
   FiPieChart,
+  FiRepeat,
+  FiTrendingUp,
 } from 'react-icons/fi'
 import { useTheme } from '@/theme/ThemeProvider'
 import type { ChainParamsResponse, Coin } from '@dexplorer/shared'
 import { getConvertedAmount, formatAmount } from '@dexplorer/shared'
 import { apiClient } from '@/lib/apiClient'
-import { displayDurationSeconds, convertRateToPercent } from '@/utils/helper'
+import { useOracleExchangeRates } from '@/hooks/useOracleData'
+import {
+  displayDurationSeconds,
+  convertRateToPercent,
+  convertRawAmount,
+  timeFromNow,
+} from '@/utils/helper'
 
 // The API returns each module's params as a loosely-typed
 // `Record<string, unknown> | null` (raw values persisted from the chain
@@ -81,6 +89,22 @@ const formatRate = (value: string | Uint8Array | undefined): string => {
   return 'N/A'
 }
 
+// Cosmos SDK sdk.Dec fields queried over LCD/REST (the steembridge and
+// oracledata modules — no ABCI/proto path for either) arrive already
+// pretty-printed as a human decimal string ("0.500000000000000000"), unlike
+// the raw scaled-bytes encoding formatRate/convertRateToPercent handle for
+// params queried via ABCI — so this is just parseFloat * 100, no rescaling.
+const formatDecPercent = (value: string | undefined): string => {
+  if (value === undefined) return 'N/A'
+  const num = parseFloat(value)
+  return Number.isNaN(num) ? 'N/A' : `${(num * 100).toFixed(2)}%`
+}
+
+const formatAsteem = (rawAmount: string | undefined): string => {
+  if (!rawAmount) return 'N/A'
+  return rawAmount === '0' ? 'No limit' : `${convertRawAmount(rawAmount, 18)} STEEM`
+}
+
 const Parameters: React.FC = () => {
   const { colors } = useTheme()
 
@@ -88,6 +112,8 @@ const Parameters: React.FC = () => {
     queryKey: ['params'],
     queryFn: () => apiClient.get<ChainParamsResponse>('/params'),
   })
+  const { rates, isLoading: ratesLoading, unavailable: ratesUnavailable } =
+    useOracleExchangeRates()
 
   const mintParams = params?.mint as MintParamsShape | null | undefined
   const stakingParams = params?.staking as StakingParamsShape | null | undefined
@@ -111,6 +137,8 @@ const Parameters: React.FC = () => {
     | GovTallyParamsShape
     | null
     | undefined
+  const bridgeParams = params?.bridge ?? null
+  const oracleParams = params?.oracle ?? null
 
   const ParameterCard: React.FC<{
     title: string
@@ -204,8 +232,8 @@ const Parameters: React.FC = () => {
   return (
     <div className="flex flex-col gap-[18px]">
       <p className="text-sm" style={{ color: colors.text.secondary }}>
-        Network parameters governing staking, governance, minting, and slashing
-        rules on this chain.
+        Network parameters governing staking, governance, minting, slashing,
+        the Steem bridge, and the price oracle on this chain.
       </p>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -483,6 +511,239 @@ const Parameters: React.FC = () => {
             tooltip="Percentage of NoWithVeto votes needed to veto a proposal"
           />
         </ParameterCard>
+
+        {/* Bridge Parameters */}
+        <ParameterCard
+          title="Bridge Parameters"
+          module="x/steembridge"
+          icon={<FiRepeat />}
+          color={colors.status.info}
+          isLoading={isLoading}
+        >
+          {bridgeParams ? (
+            <>
+              <ParameterItem
+                label="Bridge In"
+                value={bridgeParams.bridgeEnabled ? 'Enabled' : 'Disabled'}
+                tooltip="Whether Steem → SVM deposits are currently accepted"
+              />
+              <ParameterItem
+                label="Bridge Out"
+                value={bridgeParams.bridgeOutEnabled ? 'Enabled' : 'Disabled'}
+                tooltip="Whether SVM → Steem withdrawals are currently accepted"
+              />
+              <ParameterItem
+                label="Gateway Account"
+                value={bridgeParams.gatewayAccount}
+                tooltip="Steem account deposits are sent to"
+              />
+              <ParameterItem
+                label="Confirmation Threshold"
+                value={formatDecPercent(
+                  bridgeParams.bridgeConfirmationThreshold
+                )}
+                tooltip="Share of bonded validator power that must attest before a deposit mints"
+              />
+              <ParameterItem
+                label="Bridge Fee"
+                value={`${(bridgeParams.bridgeFeeBps / 100).toFixed(2)}%`}
+                tooltip="Fee taken on bridged amounts, in basis points"
+              />
+              <ParameterItem
+                label="Min / Max Bridge Amount"
+                value={`${formatAsteem(bridgeParams.minimumBridgeAmount)} / ${formatAsteem(bridgeParams.maximumBridgeAmount)}`}
+                tooltip="Per-transaction bridge amount bounds"
+              />
+              <ParameterItem
+                label="Deposit Timeout"
+                value={`${Number(bridgeParams.depositTimeoutBlocks).toLocaleString()} blocks`}
+                tooltip="Blocks a deposit can accumulate attestations before expiring"
+              />
+              <ParameterItem
+                label="Withdrawal Timeout"
+                value={`${Number(bridgeParams.withdrawalTimeoutBlocks).toLocaleString()} blocks`}
+                tooltip="Blocks a withdrawal can stay REQUESTED before auto-refunding on-chain"
+              />
+              <ParameterItem
+                label="Name Service"
+                value={bridgeParams.nameServiceEnabled ? 'Enabled' : 'Disabled'}
+                tooltip="Whether Steem-account-to-address name linking is active"
+              />
+            </>
+          ) : (
+            <p className="py-2 text-[13px]" style={{ color: colors.text.tertiary }}>
+              {isLoading ? '' : 'Bridge parameters unavailable on this deployment'}
+            </p>
+          )}
+        </ParameterCard>
+
+        {/* Oracle Parameters */}
+        <ParameterCard
+          title="Oracle Parameters"
+          module="x/oracle/data"
+          icon={<FiTrendingUp />}
+          color={colors.status.success}
+          isLoading={isLoading}
+        >
+          {oracleParams ? (
+            <>
+              <ParameterItem
+                label="Vote Period"
+                value={`${Number(oracleParams.votePeriod).toLocaleString()} blocks`}
+                tooltip="Blocks between each price-feed aggregation round"
+              />
+              <ParameterItem
+                label="Vote Threshold"
+                value={formatDecPercent(oracleParams.voteThreshold)}
+                tooltip="Share of bonded validator power required to finalize a rate"
+              />
+              <ParameterItem
+                label="Reward Band"
+                value={formatDecPercent(oracleParams.rewardBand)}
+                tooltip="Tolerance around the median vote that still earns a reward"
+              />
+              <ParameterItem
+                label="Miss Band"
+                value={formatDecPercent(oracleParams.missBand)}
+                tooltip="Tolerance around the median vote before a validator is marked as missing"
+              />
+              <ParameterItem
+                label="Whitelisted Pairs"
+                value={oracleParams.whitelist.length}
+                tooltip={oracleParams.whitelist.join(', ')}
+              />
+            </>
+          ) : (
+            <p className="py-2 text-[13px]" style={{ color: colors.text.tertiary }}>
+              {isLoading ? '' : 'Oracle parameters unavailable on this deployment'}
+            </p>
+          )}
+        </ParameterCard>
+      </div>
+
+      {/* Oracle Price Feed */}
+      <div className="reference-table-shell rounded-[14px]">
+        <div
+          className="flex items-center gap-3 border-b px-5 py-4"
+          style={{ borderColor: colors.border.primary }}
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]"
+            style={{ backgroundColor: `${colors.status.success}20` }}
+          >
+            <FiTrendingUp
+              className="h-[17px] w-[17px]"
+              style={{ color: colors.status.success }}
+            />
+          </div>
+          <div className="flex flex-col leading-[1.25]">
+            <span
+              className="text-sm font-semibold"
+              style={{ color: colors.text.primary }}
+            >
+              Oracle Price Feed
+            </span>
+            <span
+              className="font-mono text-[11px]"
+              style={{ color: colors.text.tertiary }}
+            >
+              Finalized power-weighted-median rates, one per whitelisted pair
+            </span>
+          </div>
+        </div>
+
+        {ratesUnavailable ? (
+          <p
+            className="px-5 py-4 text-[13px]"
+            style={{ color: colors.text.tertiary }}
+          >
+            Oracle price feed unavailable on this deployment
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr
+                  className="border-b"
+                  style={{ borderColor: colors.border.primary }}
+                >
+                  <th className="reference-table-header px-5 py-3 text-left">
+                    Pair
+                  </th>
+                  <th className="reference-table-header px-5 py-3 text-left">
+                    Rate
+                  </th>
+                  <th className="reference-table-header px-5 py-3 text-right">
+                    Last Updated
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {ratesLoading && rates.length === 0 ? (
+                  [...Array(4)].map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-5 py-3" colSpan={3}>
+                        <div
+                          className="h-4 w-full animate-pulse rounded"
+                          style={{ backgroundColor: colors.border.secondary }}
+                        />
+                      </td>
+                    </tr>
+                  ))
+                ) : rates.length === 0 ? (
+                  <tr>
+                    <td
+                      className="px-5 py-4 text-[13px]"
+                      colSpan={3}
+                      style={{ color: colors.text.tertiary }}
+                    >
+                      No exchange rates reported yet
+                    </td>
+                  </tr>
+                ) : (
+                  rates.map((rate) => (
+                    <tr
+                      key={rate.pair}
+                      className="reference-table-row border-b"
+                      style={{ borderColor: colors.border.primary }}
+                    >
+                      <td className="px-5 py-3">
+                        <span
+                          className="text-[13px] font-medium"
+                          style={{ color: colors.text.primary }}
+                        >
+                          {rate.pair.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className="font-mono text-[12.5px]"
+                          style={{ color: colors.text.primary }}
+                        >
+                          {parseFloat(rate.rate).toLocaleString(undefined, {
+                            maximumFractionDigits: 8,
+                          })}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <span
+                          className="text-[12.5px]"
+                          style={{ color: colors.text.tertiary }}
+                        >
+                          {timeFromNow(
+                            new Date(
+                              Number(rate.updateTime) * 1000
+                            ).toISOString()
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

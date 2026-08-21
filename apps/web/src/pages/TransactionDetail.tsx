@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import type {
   Coin,
   EvmTransactionDetails,
+  ExchangeRateVoteEntry,
   TransactionDetailResponse,
 } from '@dexplorer/shared'
 import { formatCoinAmount } from '@dexplorer/shared'
@@ -16,6 +17,7 @@ import {
   formatTokenAmount,
   getTypeMsg,
   isBech32Address,
+  parseCoinString,
   parseDetailsLines,
   safeStringify,
   trimHash,
@@ -49,20 +51,77 @@ const TYPE_LABELS: Record<string, string> = {
   Transfer: 'IBC Transfer',
   RecvPacket: 'IBC Receive',
   Acknowledgement: 'IBC Acknowledge',
-  SubmitSteemDeposit: 'Submit Steem Deposit',
+  AttestDeposit: 'Attest Deposit',
   BridgeOut: 'Bridge Out (Withdrawal)',
   SubmitNameRegistration: 'Submit Name Registration',
   ConfirmName: 'Confirm Name',
+  AttestWithdrawalPayout: 'Attest Withdrawal Payout',
+  AggregateExchangeRateVote: 'Oracle Vote',
+  AggregateExchangeRatePrevote: 'Oracle Prevote',
   Timeout: 'IBC Timeout',
   WithdrawDelegatorReward: 'Withdraw Reward',
   Undelegate: 'Begin Unbonding',
-  EthereumTx: 'Contract Call',
+  // EthereumTx deliberately isn't listed here — every MsgEthereumTx got
+  // labeled "Contract Call" regardless of what it actually did, which was
+  // wrong for a plain native-value transfer (no contract involved at all).
+  // See getEvmTxKindLabel below for the real, EVM-details-dependent label.
+}
+
+// What MetaMask/an EVM wallet links to ("view on explorer") — same pattern
+// as the backend's EVM_TX_HASH_PATTERN in routes/transactions.ts.
+const EVM_TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
+
+// A MsgEthereumTx is a thin wrapper — what it actually did only becomes
+// knowable once the EVM execution details load (contract call vs. a plain
+// native-STEEM transfer vs. deploying a new contract), unlike every other
+// message type here where the typeUrl alone says what happened.
+const getEvmTxKindLabel = (details: EvmTransactionDetails): string => {
+  if (details.method) return details.method
+  if (!details.to) return 'Contract Creation'
+  if (details.toIsContract) return 'Contract Call'
+  return 'STEEM Transfer'
 }
 
 const TOKEN_TRANSFER_TYPE_LABELS: Record<string, string> = {
   token_minting: 'Mint',
   token_transfer: 'Transfer',
 }
+
+// Event types with nothing worth showing: `tx`/`message` are pure
+// bookkeeping (signature/sequence noise, or the same action/sender already
+// shown in the Messages section above), and `coin_spent`/`coin_received`
+// duplicate `transfer`/`coinbase` — the Cosmos SDK bank module emits all
+// three for the same movement, but `transfer` alone already has sender,
+// recipient, and amount, so keeping all three just triples the noise for no
+// extra information.
+const HIDDEN_EVENT_TYPES = new Set([
+  'tx',
+  'message',
+  'coin_spent',
+  'coin_received',
+])
+
+// These two event types describe a single fund movement and get a dedicated
+// "from → to" line instead of a generic attribute dump.
+const FUND_MOVEMENT_EVENT_TYPES = new Set(['transfer', 'coinbase'])
+
+// Attribute keys that repeat on nearly every event but never mean anything
+// to a reader (internal bookkeeping) — dropped from the compact summary line.
+const NOISY_ATTRIBUTE_KEYS = new Set(['msg_index'])
+
+// Friendly names for the module accounts this chain's bridge actually moves
+// funds through — `tx.moduleAccounts` resolves any bech32 address to its raw
+// module name (e.g. "steemblackhole"); this is just presentation polish on
+// top of that, for the ones a bridge deposit/withdrawal touches.
+const MODULE_ACCOUNT_LABELS: Record<string, string> = {
+  steemblackhole: 'Bridge Mint/Burn',
+  bridge_reward: 'Bridge Reward Pool',
+  fee_collector: 'Fee Collector',
+  steembridge: 'Bridge Escrow',
+}
+
+const humanizeModuleName = (name: string) =>
+  name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
 const formatUtcTimestamp = (value: string | undefined) => {
   if (!value) return '—'
@@ -100,15 +159,197 @@ const stringifyField = (value: unknown) => {
   }
 }
 
+// Reused both inline (a MsgEthereumTx found within an indexed SVM tx) and
+// standalone (an EVM-format hash with no SVM-side wrapper indexed at all —
+// see the txLookupFailed fallback below) so the two cases render identically.
+const EvmExecutionPanel: React.FC<{
+  details: EvmTransactionDetails | undefined
+  isLoading: boolean
+}> = ({ details, isLoading }) => {
+  const { colors } = useTheme()
+
+  if (!isLoading && !details) return null
+
+  return (
+    <div className="reference-table-shell rounded-[14px]">
+      <div
+        className="border-b px-5 py-[15px] text-[14px] font-semibold"
+        style={{
+          borderColor: colors.border.primary,
+          color: colors.text.primary,
+        }}
+      >
+        EVM Execution
+      </div>
+
+      {!details ? (
+        <div
+          className="px-5 py-[18px] text-[13px]"
+          style={{ color: colors.text.secondary }}
+        >
+          Loading EVM execution details...
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[16px] px-5 py-[18px]">
+          <div className="flex flex-wrap items-center gap-[10px]">
+            <span
+              className="reference-pill"
+              style={getMessageTypePillStyle(getEvmTxKindLabel(details), colors)}
+            >
+              {getEvmTxKindLabel(details)}
+            </span>
+            <span
+              className="reference-pill"
+              style={getResultPillStyle(details.status === 'ok', colors)}
+            >
+              {details.status === 'ok' ? 'Success' : 'Failed'}
+            </span>
+          </div>
+
+          {details.to && (
+            <div className="flex flex-col gap-1">
+              <span
+                className="text-[11.5px]"
+                style={{ color: colors.text.tertiary }}
+              >
+                {details.toIsContract ? 'Interacted With (Contract)' : 'To'}
+              </span>
+              <span
+                className="break-all font-mono text-[12.5px]"
+                style={{ color: colors.text.primary }}
+              >
+                {details.to}
+              </span>
+            </div>
+          )}
+
+          {details.value !== '0' && details.to && (
+            <div className="flex flex-col gap-2">
+              <span
+                className="text-[11.5px]"
+                style={{ color: colors.text.tertiary }}
+              >
+                Value Transferred
+              </span>
+              <div
+                className="flex flex-wrap items-center gap-2 rounded-[10px] border px-3 py-2"
+                style={{ borderColor: colors.border.primary }}
+              >
+                <span
+                  className="font-mono text-[12px]"
+                  style={{ color: colors.text.secondary }}
+                  title={details.from}
+                >
+                  {trimHash(details.from, 10)}
+                </span>
+                <FiArrowRight
+                  className="h-3.5 w-3.5 shrink-0"
+                  style={{ color: colors.text.tertiary }}
+                />
+                <span
+                  className="font-mono text-[12px]"
+                  style={{ color: colors.text.secondary }}
+                  title={details.to}
+                >
+                  {trimHash(details.to, 10)}
+                </span>
+                <span
+                  className="ml-auto font-mono text-[12.5px] font-semibold"
+                  style={{ color: colors.text.primary }}
+                >
+                  {formatTokenAmount(details.value, '18', 'STEEM')}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {details.tokenTransfers.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span
+                className="text-[11.5px]"
+                style={{ color: colors.text.tertiary }}
+              >
+                Tokens Transferred ({details.tokenTransfers.length})
+              </span>
+              <div className="flex flex-col gap-2">
+                {details.tokenTransfers.map((transfer, index) => (
+                  <div
+                    key={`${transfer.tokenAddress}-${index}`}
+                    className="flex flex-wrap items-center gap-2 rounded-[10px] border px-3 py-2"
+                    style={{ borderColor: colors.border.primary }}
+                  >
+                    <span
+                      className="reference-pill"
+                      style={getMessageTypePillStyle(transfer.type, colors)}
+                    >
+                      {TOKEN_TRANSFER_TYPE_LABELS[transfer.type] || 'Transfer'}
+                    </span>
+                    <span
+                      className="font-mono text-[12px]"
+                      style={{ color: colors.text.secondary }}
+                      title={transfer.from}
+                    >
+                      {trimHash(transfer.from, 10)}
+                    </span>
+                    <FiArrowRight
+                      className="h-3.5 w-3.5 shrink-0"
+                      style={{ color: colors.text.tertiary }}
+                    />
+                    <span
+                      className="font-mono text-[12px]"
+                      style={{ color: colors.text.secondary }}
+                      title={transfer.to}
+                    >
+                      {trimHash(transfer.to, 10)}
+                    </span>
+                    <span
+                      className="ml-auto font-mono text-[12.5px] font-semibold"
+                      style={{ color: colors.text.primary }}
+                    >
+                      {formatTokenAmount(
+                        transfer.amount,
+                        transfer.tokenDecimals,
+                        transfer.tokenSymbol
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {details.explorerUrl && (
+            <a
+              href={details.explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12.5px] font-medium hover:underline"
+              style={{ color: colors.primary }}
+            >
+              View full EVM trace on Blockscout →
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const TransactionDetail: React.FC = () => {
   const { hash } = useParams<{ hash: string }>()
   const { colors } = useTheme()
+  const isEvmHashParam = Boolean(hash && EVM_TX_HASH_PATTERN.test(hash))
 
-  const { data: tx, isLoading } = useQuery({
+  const {
+    data: tx,
+    isLoading,
+    isError: txLookupFailed,
+  } = useQuery({
     queryKey: ['transaction', hash],
     queryFn: () =>
       apiClient.get<TransactionDetailResponse>(`/transactions/${hash}`),
     enabled: Boolean(hash),
+    retry: false,
   })
 
   const evmTxHash = useMemo(() => {
@@ -123,6 +364,21 @@ const TransactionDetail: React.FC = () => {
     queryKey: ['evm-transaction', evmTxHash],
     queryFn: () => apiClient.get<EvmTransactionDetails>(`/evm/tx/${evmTxHash}`),
     enabled: Boolean(evmTxHash),
+    retry: false,
+  })
+
+  // Fallback for an EVM-format hash (what MetaMask links to) with no SVM-side
+  // wrapper tx indexed for it yet — the chain's own EVM JSON-RPC still knows
+  // about it independently of our indexer, so show that rather than a bare
+  // "not found." Only fires once the primary lookup has definitively failed.
+  const {
+    data: evmOnlyDetails,
+    isLoading: isEvmOnlyLoading,
+    isError: evmOnlyFailed,
+  } = useQuery({
+    queryKey: ['evm-transaction-standalone', hash],
+    queryFn: () => apiClient.get<EvmTransactionDetails>(`/evm/tx/${hash}`),
+    enabled: isEvmHashParam && txLookupFailed,
     retry: false,
   })
 
@@ -152,6 +408,12 @@ const TransactionDetail: React.FC = () => {
       tx.messageTypes.find((typeUrl) => !typeUrl.endsWith('MsgUpdateClient')) ??
       tx.messageTypes[0]
     const rawType = primaryTypeUrl ? getTypeMsg(primaryTypeUrl) : 'Unknown'
+    const type =
+      rawType === 'EthereumTx'
+        ? evmDetails
+          ? getEvmTxKindLabel(evmDetails)
+          : 'EVM Transaction'
+        : TYPE_LABELS[rawType] || rawType
 
     return {
       fee: formatFee(tx.fee),
@@ -159,9 +421,9 @@ const TransactionDetail: React.FC = () => {
       gasWanted: formatGas(tx.gasWanted),
       memo: tx.memo || '—',
       status: tx.success ? 'Success' : 'Failed',
-      type: TYPE_LABELS[rawType] || rawType,
+      type,
     }
-  }, [tx])
+  }, [tx, evmDetails])
 
   const messageRows = useMemo(() => {
     if (!tx?.messages.length) return []
@@ -182,12 +444,122 @@ const TransactionDetail: React.FC = () => {
     })
   }, [tx])
 
+  const visibleEvents = useMemo(
+    () => tx?.events.filter((event) => !HIDDEN_EVENT_TYPES.has(event.type)) ?? [],
+    [tx]
+  )
+
+  const renderEventAttributeValue = (value: string) => {
+    const moduleName = tx?.moduleAccounts[value]
+    if (moduleName) {
+      return (
+        <span title={value}>
+          {MODULE_ACCOUNT_LABELS[moduleName] ?? humanizeModuleName(moduleName)}{' '}
+          <span style={{ color: colors.text.tertiary }}>({moduleName})</span>
+        </span>
+      )
+    }
+
+    if (value.includes('valoper')) {
+      return (
+        <Link to={`/validators/${value}`} style={{ color: colors.primary }}>
+          {value}
+        </Link>
+      )
+    }
+
+    if (isBech32Address(value)) {
+      return (
+        <Link to={`/accounts/${value}`} style={{ color: colors.primary }}>
+          {value}
+        </Link>
+      )
+    }
+
+    const coin = parseCoinString(value)
+    if (coin) {
+      return (
+        <span className="font-mono">
+          {formatCoinAmount(coin.amount, coin.denom)}
+        </span>
+      )
+    }
+
+    return <span>{value}</span>
+  }
+
+  // One line per event instead of a full attribute table — a fund-movement
+  // event (transfer/coinbase) reads as "from → to  amount", everything else
+  // as a short "Label  key: value  key: value" line. Cuts a ~20-row wall of
+  // near-duplicate coin_spent/coin_received/transfer rows down to the handful
+  // of lines that actually say something.
+  const renderEventRow = (event: (typeof visibleEvents)[number]) => {
+    const attrs = Object.fromEntries(
+      event.attributes.map((a) => [a.key, a.value])
+    )
+
+    if (FUND_MOVEMENT_EVENT_TYPES.has(event.type)) {
+      const from = attrs.sender ?? attrs.minter
+      const to = attrs.recipient
+      return (
+        <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+          {from && renderEventAttributeValue(from)}
+          <FiArrowRight
+            className="h-3.5 w-3.5 shrink-0"
+            style={{ color: colors.text.tertiary }}
+          />
+          {to ? (
+            renderEventAttributeValue(to)
+          ) : (
+            <span style={{ color: colors.text.tertiary }}>
+              {event.type === 'coinbase' ? '(minted)' : '—'}
+            </span>
+          )}
+          {attrs.amount && (
+            <span
+              className="ml-auto font-mono font-semibold"
+              style={{ color: colors.text.primary }}
+            >
+              {renderEventAttributeValue(attrs.amount)}
+            </span>
+          )}
+        </div>
+      )
+    }
+
+    const parts = event.attributes.filter(
+      (a) => !NOISY_ATTRIBUTE_KEYS.has(a.key)
+    )
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
+        <span
+          className="reference-pill shrink-0"
+          style={getMessageTypePillStyle(event.type, colors)}
+        >
+          {humanizeModuleName(event.type)}
+        </span>
+        {parts.map((attribute, index) => (
+          <span key={`${attribute.key}-${index}`}>
+            <span style={{ color: colors.text.tertiary }}>
+              {humanizeModuleName(attribute.key)}:
+            </span>{' '}
+            <span style={{ color: colors.text.primary }} title={attribute.value}>
+              {attribute.key === 'exchange_rate'
+                ? `${attribute.value.split(',').length} pairs`
+                : renderEventAttributeValue(attribute.value)}
+            </span>
+          </span>
+        ))}
+      </div>
+    )
+  }
+
   const copyText = async (value: string, label: string) => {
     await navigator.clipboard.writeText(value)
     toast.success(`${label} copied`)
   }
 
-  if (isLoading) {
+  if (isLoading || (isEvmHashParam && txLookupFailed && isEvmOnlyLoading)) {
     return (
       <div className="flex min-h-[380px] items-center justify-center">
         <p style={{ color: colors.text.secondary }}>
@@ -197,10 +569,95 @@ const TransactionDetail: React.FC = () => {
     )
   }
 
+  // No SVM-side tx indexed for this hash (e.g. what MetaMask links to) —
+  // still show what the chain's own EVM JSON-RPC knows about it, rather than
+  // just "not found", since that data doesn't depend on our indexer at all.
+  if (evmOnlyDetails) {
+    return (
+      <div className="flex flex-col gap-[18px]">
+        <Link
+          to="/txs"
+          className="inline-flex items-center gap-1.5 text-sm font-medium"
+          style={{ color: colors.text.secondary }}
+        >
+          <FiChevronLeft className="h-4 w-4" />
+          Back to transactions
+        </Link>
+
+        <div className="panel-surface rounded-[14px] px-6 py-[22px]">
+          <div className="mb-[10px] flex flex-wrap items-center gap-[13px]">
+            <div
+              className="flex h-[42px] w-[42px] items-center justify-center rounded-[11px]"
+              style={{
+                backgroundColor: `${colors.primary}14`,
+                color: colors.primary,
+              }}
+            >
+              <FiActivity className="h-5 w-5" />
+            </div>
+
+            <div className="flex flex-col gap-[5px] leading-[1.2]">
+              <span
+                className="text-[12px] font-semibold uppercase tracking-[0.05em]"
+                style={{ color: colors.text.tertiary }}
+              >
+                EVM Transaction
+              </span>
+              <div>
+                <span
+                  className="reference-pill"
+                  style={getMessageTypePillStyle(
+                    getEvmTxKindLabel(evmOnlyDetails),
+                    colors
+                  )}
+                >
+                  {getEvmTxKindLabel(evmOnlyDetails)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex-1" />
+
+            <span
+              className="reference-pill"
+              style={getResultPillStyle(
+                evmOnlyDetails.status === 'ok',
+                colors
+              )}
+            >
+              {evmOnlyDetails.status === 'ok' ? 'Success' : 'Failed'}
+            </span>
+          </div>
+
+          <span
+            className="break-all font-mono text-[12.5px]"
+            style={{ color: colors.text.secondary }}
+          >
+            {hash}
+          </span>
+
+          <p
+            className="mt-3 text-[12.5px]"
+            style={{ color: colors.text.tertiary }}
+          >
+            No SVM-side transaction is indexed for this hash yet — this is
+            what the chain's own EVM JSON-RPC reports independently.
+          </p>
+        </div>
+
+        <EvmExecutionPanel details={evmOnlyDetails} isLoading={false} />
+      </div>
+    )
+  }
+
   if (!tx || !txMeta) {
     return (
       <div className="flex min-h-[380px] items-center justify-center">
-        <p style={{ color: colors.text.secondary }}>Transaction not found</p>
+        <p style={{ color: colors.text.secondary }}>
+          {isEvmHashParam && evmOnlyFailed
+            ? "Transaction not found — no SVM-side wrapper is indexed for this hash, and the chain's EVM JSON-RPC doesn't know it either."
+            : 'Transaction not found'}
+        </p>
       </div>
     )
   }
@@ -523,181 +980,7 @@ const TransactionDetail: React.FC = () => {
       )}
 
       {evmTxHash && (isEvmLoading || evmDetails) && (
-        <div className="reference-table-shell rounded-[14px]">
-          <div
-            className="border-b px-5 py-[15px] text-[14px] font-semibold"
-            style={{
-              borderColor: colors.border.primary,
-              color: colors.text.primary,
-            }}
-          >
-            EVM Execution
-          </div>
-
-          {!evmDetails ? (
-            <div
-              className="px-5 py-[18px] text-[13px]"
-              style={{ color: colors.text.secondary }}
-            >
-              Loading EVM execution details...
-            </div>
-          ) : (
-            <div className="flex flex-col gap-[16px] px-5 py-[18px]">
-              <div className="flex flex-wrap items-center gap-[10px]">
-                {evmDetails.method ? (
-                  <span
-                    className="reference-pill"
-                    style={getMessageTypePillStyle(evmDetails.method, colors)}
-                  >
-                    {evmDetails.method}
-                  </span>
-                ) : (
-                  evmDetails.value !== '0' && (
-                    <span
-                      className="reference-pill"
-                      style={getMessageTypePillStyle('Transfer', colors)}
-                    >
-                      Transfer
-                    </span>
-                  )
-                )}
-                <span
-                  className="reference-pill"
-                  style={getResultPillStyle(evmDetails.status === 'ok', colors)}
-                >
-                  {evmDetails.status === 'ok' ? 'Success' : 'Failed'}
-                </span>
-              </div>
-
-              {evmDetails.to && (
-                <div className="flex flex-col gap-1">
-                  <span
-                    className="text-[11.5px]"
-                    style={{ color: colors.text.tertiary }}
-                  >
-                    {evmDetails.toIsContract
-                      ? 'Interacted With (Contract)'
-                      : 'To'}
-                  </span>
-                  <span
-                    className="break-all font-mono text-[12.5px]"
-                    style={{ color: colors.text.primary }}
-                  >
-                    {evmDetails.to}
-                  </span>
-                </div>
-              )}
-
-              {evmDetails.value !== '0' && evmDetails.to && (
-                <div className="flex flex-col gap-2">
-                  <span
-                    className="text-[11.5px]"
-                    style={{ color: colors.text.tertiary }}
-                  >
-                    Value Transferred
-                  </span>
-                  <div
-                    className="flex flex-wrap items-center gap-2 rounded-[10px] border px-3 py-2"
-                    style={{ borderColor: colors.border.primary }}
-                  >
-                    <span
-                      className="font-mono text-[12px]"
-                      style={{ color: colors.text.secondary }}
-                      title={evmDetails.from}
-                    >
-                      {trimHash(evmDetails.from, 10)}
-                    </span>
-                    <FiArrowRight
-                      className="h-3.5 w-3.5 shrink-0"
-                      style={{ color: colors.text.tertiary }}
-                    />
-                    <span
-                      className="font-mono text-[12px]"
-                      style={{ color: colors.text.secondary }}
-                      title={evmDetails.to}
-                    >
-                      {trimHash(evmDetails.to, 10)}
-                    </span>
-                    <span
-                      className="ml-auto font-mono text-[12.5px] font-semibold"
-                      style={{ color: colors.text.primary }}
-                    >
-                      {formatTokenAmount(evmDetails.value, '18', 'STEEM')}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {evmDetails.tokenTransfers.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <span
-                    className="text-[11.5px]"
-                    style={{ color: colors.text.tertiary }}
-                  >
-                    Tokens Transferred ({evmDetails.tokenTransfers.length})
-                  </span>
-                  <div className="flex flex-col gap-2">
-                    {evmDetails.tokenTransfers.map((transfer, index) => (
-                      <div
-                        key={`${transfer.tokenAddress}-${index}`}
-                        className="flex flex-wrap items-center gap-2 rounded-[10px] border px-3 py-2"
-                        style={{ borderColor: colors.border.primary }}
-                      >
-                        <span
-                          className="reference-pill"
-                          style={getMessageTypePillStyle(transfer.type, colors)}
-                        >
-                          {TOKEN_TRANSFER_TYPE_LABELS[transfer.type] ||
-                            'Transfer'}
-                        </span>
-                        <span
-                          className="font-mono text-[12px]"
-                          style={{ color: colors.text.secondary }}
-                          title={transfer.from}
-                        >
-                          {trimHash(transfer.from, 10)}
-                        </span>
-                        <FiArrowRight
-                          className="h-3.5 w-3.5 shrink-0"
-                          style={{ color: colors.text.tertiary }}
-                        />
-                        <span
-                          className="font-mono text-[12px]"
-                          style={{ color: colors.text.secondary }}
-                          title={transfer.to}
-                        >
-                          {trimHash(transfer.to, 10)}
-                        </span>
-                        <span
-                          className="ml-auto font-mono text-[12.5px] font-semibold"
-                          style={{ color: colors.text.primary }}
-                        >
-                          {formatTokenAmount(
-                            transfer.amount,
-                            transfer.tokenDecimals,
-                            transfer.tokenSymbol
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {evmDetails.explorerUrl && (
-                <a
-                  href={evmDetails.explorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[12.5px] font-medium hover:underline"
-                  style={{ color: colors.primary }}
-                >
-                  View full EVM trace on Blockscout →
-                </a>
-              )}
-            </div>
-          )}
-        </div>
+        <EvmExecutionPanel details={evmDetails} isLoading={isEvmLoading} />
       )}
 
       {validatorMessage && (
@@ -918,43 +1201,74 @@ const TransactionDetail: React.FC = () => {
                   </span>
                 </div>
 
-                {message.fields.map((field, fieldIndex) => (
-                  <div
-                    key={`${field.key}-${fieldIndex}`}
-                    className="flex flex-col justify-between gap-2 border-t py-[9px] md:flex-row md:items-start md:gap-[18px]"
-                    style={{ borderColor: colors.border.primary }}
-                  >
-                    <span
-                      className="text-[12.5px]"
-                      style={{ color: colors.text.secondary }}
-                    >
-                      {field.key}
-                    </span>
+                {message.fields.map((field, fieldIndex) =>
+                  field.key === 'exchangeRates' && Array.isArray(field.value) ? (
                     <div
-                      className="font-mono text-[12.5px] break-all md:max-w-[70%] md:text-right"
-                      style={{ color: colors.text.primary }}
+                      key={`${field.key}-${fieldIndex}`}
+                      className="flex flex-col gap-2 border-t py-[9px]"
+                      style={{ borderColor: colors.border.primary }}
                     >
-                      {typeof field.value === 'string' &&
-                      isBech32Address(field.value) ? (
-                        <Link
-                          to={`/accounts/${field.value}`}
-                          style={{ color: colors.primary }}
-                        >
-                          {field.value}
-                        </Link>
-                      ) : field.key === 'registrationId' ? (
-                        <Link
-                          to={`/svmns/registrations/${field.value}`}
-                          style={{ color: colors.primary }}
-                        >
-                          {stringifyField(field.value)}
-                        </Link>
-                      ) : (
-                        stringifyField(field.value)
-                      )}
+                      <span
+                        className="text-[12.5px]"
+                        style={{ color: colors.text.secondary }}
+                      >
+                        Exchange Rates
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {(field.value as ExchangeRateVoteEntry[]).map(
+                          (entry) => (
+                            <span
+                              key={entry.pair}
+                              className="reference-pill font-mono"
+                              style={{
+                                backgroundColor: colors.backgroundSecondary,
+                                color: colors.text.primary,
+                              }}
+                            >
+                              {entry.pair.replace(/_/g, ' ')}: {entry.rate}
+                            </span>
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    <div
+                      key={`${field.key}-${fieldIndex}`}
+                      className="flex flex-col justify-between gap-2 border-t py-[9px] md:flex-row md:items-start md:gap-[18px]"
+                      style={{ borderColor: colors.border.primary }}
+                    >
+                      <span
+                        className="text-[12.5px]"
+                        style={{ color: colors.text.secondary }}
+                      >
+                        {field.key}
+                      </span>
+                      <div
+                        className="font-mono text-[12.5px] break-all md:max-w-[70%] md:text-right"
+                        style={{ color: colors.text.primary }}
+                      >
+                        {typeof field.value === 'string' &&
+                        isBech32Address(field.value) ? (
+                          <Link
+                            to={`/accounts/${field.value}`}
+                            style={{ color: colors.primary }}
+                          >
+                            {field.value}
+                          </Link>
+                        ) : field.key === 'registrationId' ? (
+                          <Link
+                            to={`/svmns/registrations/${field.value}`}
+                            style={{ color: colors.primary }}
+                          >
+                            {stringifyField(field.value)}
+                          </Link>
+                        ) : (
+                          stringifyField(field.value)
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             ))}
 
@@ -966,6 +1280,31 @@ const TransactionDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {visibleEvents.length > 0 && (
+        <div className="reference-table-shell rounded-[14px]">
+          <div
+            className="border-b px-5 py-[15px] text-[14px] font-semibold"
+            style={{
+              borderColor: colors.border.primary,
+              color: colors.text.primary,
+            }}
+          >
+            Fund Flow & Events ({visibleEvents.length})
+          </div>
+
+          <div
+            className="flex flex-col divide-y px-5"
+            style={{ borderColor: colors.border.primary }}
+          >
+            {visibleEvents.map((event, eventIndex) => (
+              <div key={`${event.type}-${eventIndex}`} className="py-[9px]">
+                {renderEventRow(event)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

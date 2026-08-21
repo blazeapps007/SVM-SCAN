@@ -66,6 +66,26 @@ export default function ProposalMetadata({ proposal }: ProposalMetadataProps) {
         </div>
       )}
 
+      {proposal.failedReason && (
+        <div
+          className="flex items-center justify-between gap-4 border-b px-5 py-3"
+          style={rowStyle}
+        >
+          <span
+            className="shrink-0 text-[12.5px]"
+            style={{ color: colors.status.error }}
+          >
+            Failed Reason
+          </span>
+          <span
+            className="text-right text-[12.5px]"
+            style={{ color: colors.text.primary }}
+          >
+            {proposal.failedReason}
+          </span>
+        </div>
+      )}
+
       {proposal.submitTime && (
         <div
           className="flex items-center justify-between border-b px-5 py-3"

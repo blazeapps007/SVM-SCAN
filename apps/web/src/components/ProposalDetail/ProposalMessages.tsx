@@ -17,6 +17,9 @@ const stringifyField = (value: unknown) => {
   return String(value)
 }
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
 export default function ProposalMessages({ proposal }: ProposalMessagesProps) {
   const { colors } = useTheme()
 
@@ -79,36 +82,74 @@ export default function ProposalMessages({ proposal }: ProposalMessagesProps) {
               </div>
 
               {message.fields.length > 0 ? (
-                message.fields.map((field, fieldIndex) => (
-                  <div
-                    key={`${field.key}-${fieldIndex}`}
-                    className="flex flex-col justify-between gap-2 border-t py-[9px] md:flex-row md:items-start md:gap-[18px]"
-                    style={{ borderColor: colors.border.primary }}
-                  >
-                    <span
-                      className="text-[12.5px]"
-                      style={{ color: colors.text.secondary }}
-                    >
-                      {field.key}
-                    </span>
+                message.fields.map((field, fieldIndex) =>
+                  isPlainObject(field.value) ? (
                     <div
-                      className="font-mono text-[12.5px] break-all md:max-w-[70%] md:text-right"
-                      style={{ color: colors.text.primary }}
+                      key={`${field.key}-${fieldIndex}`}
+                      className="flex flex-col gap-2 border-t py-[9px]"
+                      style={{ borderColor: colors.border.primary }}
                     >
-                      {typeof field.value === 'string' &&
-                      isBech32Address(field.value) ? (
-                        <Link
-                          to={`/accounts/${field.value}`}
-                          style={{ color: colors.primary }}
-                        >
-                          {field.value}
-                        </Link>
-                      ) : (
-                        stringifyField(field.value)
-                      )}
+                      <span
+                        className="text-[12.5px]"
+                        style={{ color: colors.text.secondary }}
+                      >
+                        {field.key}
+                      </span>
+                      <div
+                        className="flex flex-col gap-1 rounded-[8px] px-3 py-2"
+                        style={{ backgroundColor: colors.backgroundSecondary }}
+                      >
+                        {Object.entries(field.value).map(
+                          ([nestedKey, nestedValue]) => (
+                            <div
+                              key={nestedKey}
+                              className="flex items-center justify-between gap-3 text-[12px]"
+                            >
+                              <span style={{ color: colors.text.tertiary }}>
+                                {nestedKey}
+                              </span>
+                              <span
+                                className="break-all font-mono text-right"
+                                style={{ color: colors.text.primary }}
+                              >
+                                {stringifyField(nestedValue)}
+                              </span>
+                            </div>
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ) : (
+                    <div
+                      key={`${field.key}-${fieldIndex}`}
+                      className="flex flex-col justify-between gap-2 border-t py-[9px] md:flex-row md:items-start md:gap-[18px]"
+                      style={{ borderColor: colors.border.primary }}
+                    >
+                      <span
+                        className="text-[12.5px]"
+                        style={{ color: colors.text.secondary }}
+                      >
+                        {field.key}
+                      </span>
+                      <div
+                        className="font-mono text-[12.5px] break-all md:max-w-[70%] md:text-right"
+                        style={{ color: colors.text.primary }}
+                      >
+                        {typeof field.value === 'string' &&
+                        isBech32Address(field.value) ? (
+                          <Link
+                            to={`/accounts/${field.value}`}
+                            style={{ color: colors.primary }}
+                          >
+                            {field.value}
+                          </Link>
+                        ) : (
+                          stringifyField(field.value)
+                        )}
+                      </div>
+                    </div>
+                  )
+                )
               ) : (
                 <pre
                   className="border-t py-[9px] text-[12.5px] overflow-x-auto whitespace-pre-wrap break-words"

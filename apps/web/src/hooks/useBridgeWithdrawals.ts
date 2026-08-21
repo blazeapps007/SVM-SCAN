@@ -6,7 +6,11 @@ import type {
 } from '@dexplorer/shared'
 import { apiClient } from '@/lib/apiClient'
 
-export type BridgeWithdrawalStatusFilter = 'all' | 'requested'
+export type BridgeWithdrawalStatusFilter =
+  | 'all'
+  | 'requested'
+  | 'processed'
+  | 'refunded'
 
 const PER_PAGE = 25
 

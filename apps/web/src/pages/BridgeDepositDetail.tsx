@@ -3,7 +3,12 @@ import { Link, useParams } from 'react-router-dom'
 import { FiAlertCircle, FiCheckCircle } from 'react-icons/fi'
 import { useTheme } from '@/theme/ThemeProvider'
 import { useBridgeDeposit } from '@/hooks/useBridgeDeposits'
-import { trimHash, displayDate, convertRawAmount } from '@/utils/helper'
+import {
+  trimHash,
+  displayDate,
+  convertRawAmount,
+  bridgeAssetSymbol,
+} from '@/utils/helper'
 import CopyText from '@/components/ui/CopyText'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -108,7 +113,8 @@ const BridgeDepositDetail: React.FC = () => {
             />
           </InfoRow>
           <InfoRow label="Amount">
-            {convertRawAmount(deposit.amountMillisteem, 3)} STEEM
+            {convertRawAmount(deposit.amountMillisteem, 3)}{' '}
+            {bridgeAssetSymbol(deposit.asset)}
           </InfoRow>
           <InfoRow label="Steem Sender">{deposit.steemSender}</InfoRow>
           <InfoRow label="Gateway Account">{deposit.gatewayAccount}</InfoRow>

@@ -66,6 +66,17 @@ export default function ProposalSummary({ proposal }: ProposalSummaryProps) {
         >
           {proposal.title}
         </span>
+        {proposal.expedited && (
+          <span
+            className="reference-pill"
+            style={{
+              backgroundColor: `${colors.status.warning}20`,
+              color: colors.status.warning,
+            }}
+          >
+            Expedited
+          </span>
+        )}
         <span
           className="reference-pill capitalize"
           style={{

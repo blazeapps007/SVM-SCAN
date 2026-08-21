@@ -32,6 +32,8 @@ export const proposalSchema = z.object({
   votingEndTime: z.date().nullable(),
   totalDeposit: z.array(coinSchema),
   finalTallyResult: tallyResultSchema.nullable(),
+  expedited: z.boolean(),
+  failedReason: z.string(),
   lastRefreshedAt: z.date(),
 })
 

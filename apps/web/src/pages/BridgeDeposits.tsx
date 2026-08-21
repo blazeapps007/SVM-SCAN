@@ -1,9 +1,14 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FiRepeat } from 'react-icons/fi'
+import { FiInfo, FiRepeat } from 'react-icons/fi'
 import type { BridgeDeposit } from '@dexplorer/shared'
 import { useTheme } from '@/theme/ThemeProvider'
-import { trimHash, timeFromNow, convertRawAmount } from '@/utils/helper'
+import {
+  trimHash,
+  timeFromNow,
+  convertRawAmount,
+  bridgeAssetSymbol,
+} from '@/utils/helper'
 import {
   useBridgeDeposits,
   useBridgeDepositStats,
@@ -55,8 +60,8 @@ const StatusPill: React.FC<{ status: BridgeDeposit['status'] }> = ({
   )
 }
 
-const formatAmount = (amountMillisteem: string): string =>
-  `${convertRawAmount(amountMillisteem, 3)} STEEM`
+const formatAmount = (amountMillisteem: string, asset: string): string =>
+  `${convertRawAmount(amountMillisteem, 3)} ${bridgeAssetSymbol(asset)}`
 
 const BridgeDeposits: React.FC = () => {
   const { colors } = useTheme()
@@ -77,30 +82,65 @@ const BridgeDeposits: React.FC = () => {
   return (
     <div className="space-y-5">
       {stats && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5">
           {[
-            { label: 'Total', value: stats.total },
-            { label: 'Pending', value: stats.pending },
-            { label: 'Minted', value: stats.minted },
-            { label: 'Unclaimable', value: stats.unclaimable },
+            ...stats.countByAsset.map((assetCount) => ({
+              label: `Deposits (${bridgeAssetSymbol(assetCount.asset)})`,
+              value: assetCount.count.toLocaleString(),
+            })),
+            {
+              label: 'Pending / Minted',
+              value: `${stats.pending.toLocaleString()}/${stats.minted.toLocaleString()}`,
+            },
+            ...stats.mintedByAsset.map((assetTotal) => ({
+              label: `Total Minted (${bridgeAssetSymbol(assetTotal.asset)})`,
+              value: `${convertRawAmount(assetTotal.amountMillisteem, 3)} ${bridgeAssetSymbol(assetTotal.asset)}`,
+            })),
           ].map((stat) => (
             <div
               key={stat.label}
-              className="panel-surface rounded-[14px] px-5 py-4"
+              className="panel-surface rounded-[10px] px-3 py-2.5"
             >
-              <p className="text-xs" style={{ color: colors.text.tertiary }}>
+              <p
+                className="text-[11px]"
+                style={{ color: colors.text.tertiary }}
+              >
                 {stat.label}
               </p>
               <p
-                className="mt-1 text-xl font-semibold"
+                className="mt-0.5 text-[15px] font-semibold"
                 style={{ color: colors.text.primary }}
               >
-                {stat.value.toLocaleString()}
+                {stat.value}
               </p>
             </div>
           ))}
         </div>
       )}
+
+      <div
+        className="flex items-start gap-2 rounded-[10px] px-4 py-3 text-[12.5px]"
+        style={{
+          backgroundColor: colors.backgroundSecondary,
+          color: colors.text.secondary,
+        }}
+      >
+        <FiInfo
+          className="mt-[1px] h-3.5 w-3.5 shrink-0"
+          style={{ color: colors.text.tertiary }}
+        />
+        <span>
+          "Total Minted" figures are summed from the deposits listed below,
+          per asset. They don't include{' '}
+          <Link to="/svmns" style={{ color: colors.primary }}>
+            SVMNS name registrations
+          </Link>
+          , which also mint STEEM 1:1 on confirmation (same mechanism as a
+          deposit) but aren't tracked as deposits here — the chain exposes
+          them as a separate list with no "list all" query to itemize them
+          the same way.
+        </span>
+      </div>
 
       <div className="flex gap-2">
         {STATUS_TABS.map((tab) => (
@@ -185,7 +225,7 @@ const BridgeDeposits: React.FC = () => {
                       className="font-mono text-sm"
                       style={{ color: colors.text.primary }}
                     >
-                      {formatAmount(deposit.amountMillisteem)}
+                      {formatAmount(deposit.amountMillisteem, deposit.asset)}
                     </span>
                   </td>
                   <td className="px-5 py-4">

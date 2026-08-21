@@ -10,6 +10,8 @@ export type ChainParamsModule =
   | 'govVoting'
   | 'govDeposit'
   | 'govTally'
+  | 'bridge'
+  | 'oracle'
 
 export const chainParamsSchema = z.object({
   _id: z.string(),

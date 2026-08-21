@@ -37,6 +37,7 @@ function toDoc(raw: RawSteemBridgeDeposit, now: Date): BridgeDepositDoc {
       timestamp: c.timestamp,
     })),
     lastRefreshedAt: now,
+    asset: raw.asset,
   }
 }
 

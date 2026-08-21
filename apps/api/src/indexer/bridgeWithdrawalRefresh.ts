@@ -24,6 +24,16 @@ function toDoc(raw: RawSteemBridgeWithdrawal, now: Date): BridgeWithdrawalDoc {
     status: raw.status,
     createdAtHeight: raw.created_at,
     lastRefreshedAt: now,
+    asset: raw.asset,
+    feeMillisteem: raw.fee_millisteem,
+    steemPayoutTxid: raw.steem_payout_txid,
+    payoutOpIndex: raw.payout_op_index,
+    processedAtHeight: raw.processed_at,
+    refundedAtHeight: raw.refunded_at,
+    validatorConfirmations: raw.validator_confirmations.map((c) => ({
+      validatorAddress: c.validator_address,
+      timestamp: c.timestamp,
+    })),
   }
 }
 

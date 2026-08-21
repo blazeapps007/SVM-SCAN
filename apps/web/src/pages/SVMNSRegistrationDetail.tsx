@@ -92,8 +92,15 @@ const SVMNSRegistrationDetail: React.FC = () => {
               displayText={trimHash(registration.derivedDestination, 14)}
             />
           </InfoRow>
-          <InfoRow label="Registration Fee">
+          <InfoRow label="Amount Minted">
             {convertRawAmount(registration.amountMillisteem, 3)} STEEM
+            <span
+              className="ml-2 text-xs"
+              style={{ color: colors.text.tertiary }}
+            >
+              — minted to the destination on confirmation, same as a bridge
+              deposit. Not a fee; nothing is withheld.
+            </span>
           </InfoRow>
           <InfoRow label="Steem Txid">
             <CopyText text={registration.txid} displayText={trimHash(registration.txid, 14)} />
