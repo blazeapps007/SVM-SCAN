@@ -485,6 +485,34 @@ export interface ChainParamsResponse {
   oracle: OracleParams | null
 }
 
+export interface TokenomicsResponse {
+  // Lifetime sum of every indexed transaction's fee, grouped by denom —
+  // computed from `transactions`, not a live query.
+  totalTxFees: Coin[]
+  // Lifetime sum of the protocol fee withheld on every bridge-out
+  // (BridgeWithdrawal.feeMillisteem, sent to the bridge_reward module
+  // account), grouped by asset.
+  totalBridgeFees: BridgeAssetTotal[]
+  // Lifetime sum of every reward claim (delegator rewards + validator
+  // commission) ever indexed, chain-wide across all validators combined —
+  // the same `rewardClaims` aggregation as a validator's own
+  // `totalRewardsClaimed`, just without the per-validator filter.
+  totalRewardsDistributed: Coin[]
+  // Current total bonded tokens across all BOND_STATUS_BONDED validators —
+  // a live snapshot (from our periodically-refreshed validators collection),
+  // not a cumulative lifetime figure.
+  totalStaked: Coin[]
+  // Lifetime sum of every bridge-out's principal (BridgeWithdrawal.
+  // amountMillisteem) — burned via steemblackhole on every withdrawal
+  // regardless of status, grouped by asset. The same underlying data as
+  // BridgeWithdrawalStats.withdrawnByAsset, just surfaced here as "burned"
+  // for the tokenomics section.
+  totalBurned: BridgeAssetTotal[]
+  // Live current balance of the distribution module's community pool —
+  // null if the ABCI query failed (best-effort, not load-bearing).
+  communityPool: Coin[] | null
+}
+
 export interface DenomMetadataResponse {
   denom: string
   displayName: string

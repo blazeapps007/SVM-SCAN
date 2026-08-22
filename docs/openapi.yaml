@@ -853,6 +853,32 @@ paths:
                   missBand: '0.030000000000000000'
                   whitelist: [STEEM/USD_External, STEEM/SBD_Internal, SBD/USD_External, Price_Feed]
 
+  /params/tokenomics:
+    get:
+      tags: [Params]
+      operationId: getTokenomics
+      summary: Chain-wide lifetime economic totals
+      description: |
+        Powers the Parameters page's "Tokenomics" section. Mostly lifetime aggregates computed
+        from indexed collections (`transactions`, `bridgeWithdrawals`, `rewardClaims`) rather than
+        a live chain query — the two exceptions are `totalStaked` (a live snapshot of currently
+        bonded tokens, not cumulative) and `communityPool` (a live ABCI query, `null` if it fails).
+        Cached server-side for 60s given the several full-collection aggregations involved.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenomicsResponse'
+              example:
+                totalTxFees: [{ denom: asteem, amount: '86452000000000' }]
+                totalBridgeFees: [{ asset: BRIDGE_ASSET_STEEM, amountMillisteem: '250' }]
+                totalRewardsDistributed: []
+                totalStaked: [{ denom: asteem, amount: '104792000000000000000000' }]
+                totalBurned: [{ asset: BRIDGE_ASSET_STEEM, amountMillisteem: '10000' }]
+                communityPool: [{ denom: asteem, amount: '1200000000000000000000.000000000000000000' }]
+
   /oracle/exchange-rates:
     get:
       tags: [Oracle]
@@ -2077,6 +2103,37 @@ components:
             - $ref: '#/components/schemas/OracleParams'
             - type: 'null'
       required: [staking, mint, distribution, slashing, gov, bridge, oracle]
+
+    TokenomicsResponse:
+      type: object
+      properties:
+        totalTxFees:
+          type: array
+          items: { $ref: '#/components/schemas/Coin' }
+          description: Lifetime sum of every indexed transaction's fee, grouped by denom.
+        totalBridgeFees:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeAssetTotal' }
+          description: Lifetime sum of the protocol fee withheld on every bridge-out, grouped by asset.
+        totalRewardsDistributed:
+          type: array
+          items: { $ref: '#/components/schemas/Coin' }
+          description: Lifetime sum of every reward claim (delegator + validator commission) ever indexed, chain-wide across all validators.
+        totalStaked:
+          type: array
+          items: { $ref: '#/components/schemas/Coin' }
+          description: Current total bonded tokens across all BOND_STATUS_BONDED validators — a live snapshot, not a lifetime cumulative figure.
+        totalBurned:
+          type: array
+          items: { $ref: '#/components/schemas/BridgeAssetTotal' }
+          description: Lifetime sum of every bridge-out's principal, grouped by asset (burned via steemblackhole regardless of withdrawal status).
+        communityPool:
+          oneOf:
+            - type: array
+              items: { $ref: '#/components/schemas/Coin' }
+            - type: 'null'
+          description: Live current balance of the distribution module's community pool; null if the ABCI query failed.
+      required: [totalTxFees, totalBridgeFees, totalRewardsDistributed, totalStaked, totalBurned, communityPool]
 
     BridgeParams:
       type: object

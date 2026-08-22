@@ -1,18 +1,146 @@
 import type { FastifyInstance } from 'fastify'
 import type {
+  BridgeAssetTotal,
   BridgeParams,
   ChainParamsResponse,
+  Coin,
   OracleParams,
+  TokenomicsResponse,
 } from '@dexplorer/shared'
+import { decodeLegacyDecString } from '@dexplorer/shared'
 import type { AppContext } from '../server'
+import type { Db } from 'mongodb'
 import {
   CHAIN_PARAMS_COLLECTION,
   ChainParamsDoc,
 } from '../db/schemas/chainParams.schema'
+import {
+  TRANSACTIONS_COLLECTION,
+  TransactionDoc,
+} from '../db/schemas/transaction.schema'
+import {
+  BRIDGE_WITHDRAWALS_COLLECTION,
+  BridgeWithdrawalDoc,
+} from '../db/schemas/bridgeWithdrawal.schema'
+import {
+  REWARD_CLAIMS_COLLECTION,
+  RewardClaimDoc,
+} from '../db/schemas/rewardClaim.schema'
+import {
+  VALIDATORS_COLLECTION,
+  ValidatorDoc,
+} from '../db/schemas/validator.schema'
+import { queryCommunityPool } from '../chain/abci'
+import { TtlCache } from '../utils/ttlCache'
+
+// $unwind + $group + $toDecimal (avoids float precision loss summing these
+// big string-encoded atto amounts) over a { denom, amount } array field —
+// the same shape used for tx fees, reward-claim amounts, and bridge
+// withdrawal principal, so one pipeline builder covers all three.
+function sumCoinArrayField(arrayField: string) {
+  return [
+    { $unwind: `$${arrayField}` },
+    {
+      $group: {
+        _id: `$${arrayField}.denom`,
+        sum: { $sum: { $toDecimal: `$${arrayField}.amount` } },
+      },
+    },
+    { $project: { _id: 0, denom: '$_id', amount: { $toString: '$sum' } } },
+    { $sort: { denom: 1 } },
+  ]
+}
+
+async function getTotalTxFees(db: Db): Promise<Coin[]> {
+  return db
+    .collection<TransactionDoc>(TRANSACTIONS_COLLECTION)
+    .aggregate<Coin>(sumCoinArrayField('fee'))
+    .toArray()
+}
+
+async function getTotalRewardsDistributed(db: Db): Promise<Coin[]> {
+  return db
+    .collection<RewardClaimDoc>(REWARD_CLAIMS_COLLECTION)
+    .aggregate<Coin>(sumCoinArrayField('amount'))
+    .toArray()
+}
+
+async function getTotalBridgeFees(db: Db): Promise<BridgeAssetTotal[]> {
+  return db
+    .collection<BridgeWithdrawalDoc>(BRIDGE_WITHDRAWALS_COLLECTION)
+    .aggregate<BridgeAssetTotal>([
+      {
+        $group: {
+          _id: '$asset',
+          sum: { $sum: { $toDecimal: '$feeMillisteem' } },
+        },
+      },
+      {
+        $project: { _id: 0, asset: '$_id', amountMillisteem: { $toString: '$sum' } },
+      },
+      { $sort: { asset: 1 } },
+    ])
+    .toArray()
+}
+
+// Not status-filtered — the burn (steemblackhole) already happened by the
+// time a withdrawal is indexed at all, same reasoning as
+// BridgeWithdrawalStats.withdrawnByAsset (this is that same aggregation,
+// just surfaced here as "burned" for the tokenomics section).
+async function getTotalBurned(db: Db): Promise<BridgeAssetTotal[]> {
+  return db
+    .collection<BridgeWithdrawalDoc>(BRIDGE_WITHDRAWALS_COLLECTION)
+    .aggregate<BridgeAssetTotal>([
+      {
+        $group: {
+          _id: '$asset',
+          sum: { $sum: { $toDecimal: '$amountMillisteem' } },
+        },
+      },
+      {
+        $project: { _id: 0, asset: '$_id', amountMillisteem: { $toString: '$sum' } },
+      },
+      { $sort: { asset: 1 } },
+    ])
+    .toArray()
+}
+
+async function getTotalStaked(db: Db): Promise<Coin[]> {
+  const stakingParams = await db
+    .collection<ChainParamsDoc>(CHAIN_PARAMS_COLLECTION)
+    .findOne({ _id: 'staking' })
+  const bondDenom =
+    ((stakingParams?.params as Record<string, unknown> | undefined)
+      ?.bondDenom as string | undefined) ?? 'asteem'
+
+  const bondedDocs = await db
+    .collection<ValidatorDoc>(VALIDATORS_COLLECTION)
+    .find({ status: 'BOND_STATUS_BONDED' }, { projection: { tokens: 1 } })
+    .toArray()
+
+  const total = bondedDocs.reduce((sum, doc) => sum + BigInt(doc.tokens || '0'), 0n)
+  return [{ denom: bondDenom, amount: total.toString() }]
+}
+
+async function getCommunityPool(
+  tmClient: AppContext['tmClient']
+): Promise<Coin[] | null> {
+  try {
+    const { pool } = await queryCommunityPool(tmClient)
+    return pool.map((coin) => ({
+      denom: coin.denom,
+      amount: decodeLegacyDecString(coin.amount),
+    }))
+  } catch {
+    return null
+  }
+}
+
+const tokenomicsCache = new TtlCache<TokenomicsResponse>(60_000)
 
 export function registerParamsRoutes(
   app: FastifyInstance,
-  { db }: AppContext
+  { db, tmClient }: AppContext
 ): void {
   app.get('/params', async (): Promise<ChainParamsResponse> => {
     const docs = await db
@@ -40,5 +168,41 @@ export function registerParamsRoutes(
       bridge: (byId.get('bridge') as BridgeParams | undefined) ?? null,
       oracle: (byId.get('oracle') as OracleParams | undefined) ?? null,
     }
+  })
+
+  // Combines several lifetime aggregates (cheap to compute individually, but
+  // several full-collection $group passes add up) plus one live ABCI query
+  // into a single cached response, rather than the frontend firing five
+  // separate requests for one page section.
+  app.get('/params/tokenomics', async (): Promise<TokenomicsResponse> => {
+    const cached = tokenomicsCache.get('tokenomics')
+    if (cached) return cached
+
+    const [
+      totalTxFees,
+      totalBridgeFees,
+      totalRewardsDistributed,
+      totalStaked,
+      totalBurned,
+      communityPool,
+    ] = await Promise.all([
+      getTotalTxFees(db),
+      getTotalBridgeFees(db),
+      getTotalRewardsDistributed(db),
+      getTotalStaked(db),
+      getTotalBurned(db),
+      getCommunityPool(tmClient),
+    ])
+
+    const response: TokenomicsResponse = {
+      totalTxFees,
+      totalBridgeFees,
+      totalRewardsDistributed,
+      totalStaked,
+      totalBurned,
+      communityPool,
+    }
+    tokenomicsCache.set('tokenomics', response)
+    return response
   })
 }

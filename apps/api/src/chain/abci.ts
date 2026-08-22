@@ -30,6 +30,8 @@ import {
   QueryValidatorOutstandingRewardsResponse,
   QueryValidatorCommissionRequest,
   QueryValidatorCommissionResponse,
+  QueryCommunityPoolRequest,
+  QueryCommunityPoolResponse,
 } from 'cosmjs-types/cosmos/distribution/v1beta1/query'
 import {
   QueryParamsRequest as QuerySlashingParamsRequest,
@@ -222,6 +224,22 @@ export async function queryDistributionParams(
     req
   )
   return QueryDistributionParamsResponse.decode(value)
+}
+
+// Community pool coins are live current-state (topped up by the
+// community-tax skim on every block's rewards, drawn down by
+// MsgCommunityPoolSpend) — same "query live, don't index" reasoning as
+// account balances or a validator's pending rewards.
+export async function queryCommunityPool(
+  tmClient: Tendermint37Client
+): Promise<QueryCommunityPoolResponse> {
+  const queryClient = getQueryClient(tmClient)
+  const req = QueryCommunityPoolRequest.encode({}).finish()
+  const { value } = await queryClient.queryAbci(
+    '/cosmos.distribution.v1beta1.Query/CommunityPool',
+    req
+  )
+  return QueryCommunityPoolResponse.decode(value)
 }
 
 // Un-withdrawn rewards accrued for a validator (split between its

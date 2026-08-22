@@ -10,11 +10,13 @@ import {
   FiTrendingUp,
 } from 'react-icons/fi'
 import { useTheme } from '@/theme/ThemeProvider'
-import type { ChainParamsResponse, Coin } from '@dexplorer/shared'
+import type { BridgeAssetTotal, ChainParamsResponse, Coin } from '@dexplorer/shared'
 import { getConvertedAmount, formatAmount } from '@dexplorer/shared'
 import { apiClient } from '@/lib/apiClient'
 import { useOracleExchangeRates } from '@/hooks/useOracleData'
+import { useTokenomics } from '@/hooks/useTokenomics'
 import {
+  bridgeAssetSymbol,
   displayDurationSeconds,
   convertRateToPercent,
   convertRawAmount,
@@ -108,6 +110,35 @@ const formatAsteem = (rawAmount: string | undefined): string => {
   return rawAmount === '0' ? 'No limit' : `${convertRawAmount(rawAmount, 18)} STEEM`
 }
 
+// tokenomics Coin[] fields (tx fees, rewards distributed, staked, community
+// pool) are always atto-denominated, unlike the millisteem-denominated
+// bridge asset totals below — multiple denoms would be unusual in practice
+// but are joined rather than dropped in case a second bond/reward denom
+// ever appears.
+const formatCoinList = (coins: Coin[] | null | undefined): string => {
+  if (!coins || coins.length === 0) return '0'
+  return coins
+    .map((coin) => {
+      const converted = getConvertedAmount(coin.amount, coin.denom)
+      return `${formatAmount(converted.converted)} ${converted.base.toUpperCase()}`
+    })
+    .join(', ')
+}
+
+// Same millisteem/3-decimal convention the Bridge Deposits/Withdrawals pages
+// already use for BridgeAssetTotal — see bridgeAssetSymbol's doc comment.
+const formatBridgeAssetTotalList = (
+  totals: BridgeAssetTotal[] | null | undefined
+): string => {
+  if (!totals || totals.length === 0) return '0'
+  return totals
+    .map(
+      (total) =>
+        `${convertRawAmount(total.amountMillisteem, 3)} ${bridgeAssetSymbol(total.asset)}`
+    )
+    .join(', ')
+}
+
 const Parameters: React.FC = () => {
   const { colors } = useTheme()
 
@@ -117,6 +148,7 @@ const Parameters: React.FC = () => {
   })
   const { rates, isLoading: ratesLoading, unavailable: ratesUnavailable } =
     useOracleExchangeRates()
+  const { tokenomics, isLoading: tokenomicsLoading } = useTokenomics()
 
   const mintParams = params?.mint as MintParamsShape | null | undefined
   const stakingParams = params?.staking as StakingParamsShape | null | undefined
@@ -238,6 +270,117 @@ const Parameters: React.FC = () => {
         Network parameters governing staking, governance, minting, slashing,
         the Steem bridge, and the price oracle on this chain.
       </p>
+
+      {/* Tokenomics */}
+      <div className="reference-table-shell rounded-[14px]">
+        <div
+          className="flex items-center gap-3 border-b px-5 py-4"
+          style={{ borderColor: colors.border.primary }}
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]"
+            style={{ backgroundColor: `${colors.status.warning}20` }}
+          >
+            <FiPieChart
+              className="h-[17px] w-[17px]"
+              style={{ color: colors.status.warning }}
+            />
+          </div>
+          <div className="flex flex-col leading-[1.25]">
+            <span
+              className="text-sm font-semibold"
+              style={{ color: colors.text.primary }}
+            >
+              Tokenomics
+            </span>
+            <span
+              className="font-mono text-[11px]"
+              style={{ color: colors.text.tertiary }}
+            >
+              Lifetime totals computed from indexed chain history
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 px-5 py-4 sm:grid-cols-3 lg:grid-cols-6">
+          {tokenomicsLoading
+            ? [...Array(6)].map((_, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col gap-2 rounded-[10px] border px-4 py-3"
+                  style={{ borderColor: colors.border.primary }}
+                >
+                  <div
+                    className="h-3 w-20 animate-pulse rounded"
+                    style={{ backgroundColor: colors.border.secondary }}
+                  />
+                  <div
+                    className="h-4 w-16 animate-pulse rounded"
+                    style={{ backgroundColor: colors.border.secondary }}
+                  />
+                </div>
+              ))
+            : [
+                {
+                  label: 'Total Tx Fees',
+                  value: formatCoinList(tokenomics?.totalTxFees),
+                  tooltip: 'Lifetime sum of every indexed transaction fee',
+                },
+                {
+                  label: 'Total Bridge Fees',
+                  value: formatBridgeAssetTotalList(
+                    tokenomics?.totalBridgeFees
+                  ),
+                  tooltip:
+                    'Lifetime protocol fee withheld on every bridge-out',
+                },
+                {
+                  label: 'Rewards Distributed',
+                  value: formatCoinList(tokenomics?.totalRewardsDistributed),
+                  tooltip:
+                    'Lifetime sum of every delegator reward + validator commission claim, chain-wide',
+                },
+                {
+                  label: 'Total Staked',
+                  value: formatCoinList(tokenomics?.totalStaked),
+                  tooltip:
+                    'Current total bonded tokens across all active validators',
+                },
+                {
+                  label: 'Total Burned',
+                  value: formatBridgeAssetTotalList(tokenomics?.totalBurned),
+                  tooltip: 'Lifetime principal burned on every bridge-out',
+                },
+                {
+                  label: 'Community Pool',
+                  value: tokenomics?.communityPool
+                    ? formatCoinList(tokenomics.communityPool)
+                    : 'Unavailable',
+                  tooltip: 'Current community pool balance',
+                },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="flex flex-col gap-1 rounded-[10px] border px-4 py-3"
+                  style={{ borderColor: colors.border.primary }}
+                  title={stat.tooltip}
+                >
+                  <span
+                    className="text-[11px]"
+                    style={{ color: colors.text.tertiary }}
+                  >
+                    {stat.label}
+                  </span>
+                  <span
+                    className="font-mono text-[13px] font-semibold"
+                    style={{ color: colors.text.primary }}
+                  >
+                    {stat.value}
+                  </span>
+                </div>
+              ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Mint Parameters */}
