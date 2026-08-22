@@ -164,6 +164,7 @@ paths:
                     hash: 5552F75E87C8B5C6DFA8126DEEB097FF6CB03F1900156B0E80AE307F35AAA963
                     time: '2026-08-14T04:50:57.663Z'
                     proposerAddress: 56D6DF9A8F4DFA6DCF8CABB2F3C9DDE167C68372
+                    proposerMoniker: null
                     appHash: B564B9FBDC6F58BECBE077E84E1B34C11D05245AED71F5CBC01D3C3B224018D5
                     txCount: 0
                 pagination: { page: 0, perPage: 1, total: 382211 }
@@ -187,6 +188,7 @@ paths:
                 hash: 9588C1B80D7866742A563495D9791737C683B676B64EC79BAAAFA41A02913951
                 time: '2026-08-12T00:32:29.334Z'
                 proposerAddress: 64837863184C5B2C462593FCD5C366B0558C4EF4
+                proposerMoniker: blaze.apps
                 appHash: 34C979A8E10126D208206FA3A69613D69967752B52DE00622EDA0458C5507FFE
                 txCount: 3
                 txHashes:
@@ -448,6 +450,66 @@ paths:
                 pendingRewards: [{ denom: asteem, amount: '6357304896302555505.419127201143333997' }]
                 accumulatedCommission: [{ denom: asteem, amount: '635730489630255550.541912720114333372' }]
                 totalRewardsClaimed: []
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /validators/{identity}/attestations:
+    get:
+      tags: [Validators]
+      operationId: getValidatorAttestations
+      summary: Recent bridge deposit/withdrawal attestations by a validator
+      description: Up to 20 most recent bridge deposits/withdrawals this validator has confirmed (oracle-attested), across both collections, newest confirmation first.
+      parameters:
+        - name: identity
+          in: path
+          required: true
+          schema: { type: string }
+          example: blaze.apps
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ValidatorAttestation' }
+              example:
+                - type: deposit
+                  id: '42'
+                  txRef: 40094D509AAE85FA78336902A411CCEBD118F582F7A9CF8D7E93A98DB19D244D
+                  asset: BRIDGE_ASSET_STEEM
+                  amountMillisteem: '10000'
+                  status: DEPOSIT_STATUS_MINTED
+                  confirmedAt: '1755820227'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /validators/{identity}/oracle-submissions:
+    get:
+      tags: [Validators]
+      operationId: getValidatorOracleSubmissions
+      summary: Recent oracle vote/prevote submissions by a validator
+      description: Up to 20 most recent MsgAggregateExchangeRateVote/Prevote transactions signed by this validator's account, newest first.
+      parameters:
+        - name: identity
+          in: path
+          required: true
+          schema: { type: string }
+          example: blaze.apps
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ValidatorOracleSubmission' }
+              example:
+                - hash: C221CD6E1F2A3B4C5D6E7F8091A2B3C4D5E6F708D8DD89DB
+                  height: 32401
+                  timestamp: '2026-08-22T05:12:07.000Z'
+                  success: true
+                  kind: vote
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -762,13 +824,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChainParamsResponse'
               example:
-                staking: { unbondingTime: { seconds: 2419200, nanos: 0 }, maxValidators: 100, bondDenom: asteem }
-                mint: { mintDenom: asteem, blocksPerYear: 5259600 }
+                staking: { unbondingTime: { seconds: '2419200', nanos: 0 }, maxValidators: 100, bondDenom: asteem }
+                mint: { mintDenom: asteem, blocksPerYear: '5259600' }
                 distribution: { communityTax: '500000000000000000', withdrawAddrEnabled: true }
-                slashing: { signedBlocksWindow: 100, downtimeJailDuration: { seconds: 600, nanos: 0 } }
+                slashing: { signedBlocksWindow: '100', minSignedPerWindow: '500000000000000000', downtimeJailDuration: { seconds: '600', nanos: 0 }, slashFractionDoubleSign: '50000000000000000', slashFractionDowntime: '10000000000000000' }
                 gov:
-                  votingParams: { votingPeriod: { seconds: 172800, nanos: 0 } }
-                  depositParams: { minDeposit: [{ denom: asteem, amount: '10000000000000000000' }] }
+                  votingParams: { votingPeriod: { seconds: '172800', nanos: 0 } }
+                  depositParams: { minDeposit: [{ denom: asteem, amount: '10000000000000000000' }], maxDepositPeriod: { seconds: '172800', nanos: 0 } }
                   tallyParams: { quorum: '0.334000000000000000', threshold: '0.500000000000000000' }
                 bridge:
                   bridgeEnabled: true
@@ -1485,9 +1547,12 @@ components:
         hash: { type: string }
         time: { type: string, format: date-time }
         proposerAddress: { type: string }
+        proposerMoniker:
+          oneOf: [{ type: string }, { type: 'null' }]
+          description: This block's proposer resolved to a validator moniker, when the raw hex proposerAddress matches an indexed validator's consensus address — null if no match (e.g. the validator has since unbonded/been removed).
         appHash: { type: string }
         txCount: { type: integer }
-      required: [height, hash, time, proposerAddress, appHash, txCount]
+      required: [height, hash, time, proposerAddress, proposerMoniker, appHash, txCount]
 
     BlockDetailResponse:
       allOf:
@@ -1647,6 +1712,28 @@ components:
         totalCount: { type: integer }
         avgCommission: { type: number }
       required: [activeCount, totalCount, avgCommission]
+
+    ValidatorAttestation:
+      type: object
+      properties:
+        type: { type: string, enum: [deposit, withdrawal] }
+        id: { type: string }
+        txRef: { type: string, description: 'The Steem-side txid for a deposit, or the SVM-side burn tx hash for a withdrawal.' }
+        asset: { type: string }
+        amountMillisteem: { type: string }
+        status: { type: string }
+        confirmedAt: { type: string, description: 'Unix seconds — when this validator attested, not the deposit/withdrawal''s own creation time.' }
+      required: [type, id, txRef, asset, amountMillisteem, status, confirmedAt]
+
+    ValidatorOracleSubmission:
+      type: object
+      properties:
+        hash: { type: string }
+        height: { type: integer }
+        timestamp: { type: string, format: date-time }
+        success: { type: boolean }
+        kind: { type: string, enum: [vote, prevote] }
+      required: [hash, height, timestamp, success, kind]
 
     ProposalSummary:
       type: object

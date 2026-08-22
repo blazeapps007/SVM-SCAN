@@ -18,6 +18,35 @@ const formatFee = (coins: Coin[] | undefined) => {
   return formatCoinAmount(fee.amount, fee.denom)
 }
 
+// Same friendly-label convention as Transactions.tsx/TransactionDetail.tsx/
+// BlockDetail.tsx — a raw type name like "AggregateExchangeRateVote" is long
+// enough to overflow this table's fixed-width Messages column and visually
+// collide with the Result column next to it, so it needs shortening here
+// too, not just truncation.
+const TYPE_LABELS: Record<string, string> = {
+  Transfer: 'IBC Transfer',
+  RecvPacket: 'IBC Receive',
+  Acknowledgement: 'IBC Acknowledge',
+  Timeout: 'IBC Timeout',
+  AttestDeposit: 'Attest Deposit',
+  BridgeOut: 'Bridge Out',
+  SubmitNameRegistration: 'Submit Name Reg.',
+  ConfirmName: 'Confirm Name',
+  AttestWithdrawalPayout: 'Attest Payout',
+  AggregateExchangeRateVote: 'Oracle Vote',
+  AggregateExchangeRatePrevote: 'Oracle Prevote',
+  GrantAllowance: 'Grant Allowance',
+  RevokeAllowance: 'Revoke Allowance',
+  WithdrawDelegatorReward: 'Withdraw Reward',
+  Undelegate: 'Begin Unbonding',
+  EthereumTx: 'EVM Transaction',
+}
+
+const getTypeLabel = (typeUrl: string): string => {
+  const rawLabel = getTypeMsg(typeUrl)
+  return TYPE_LABELS[rawLabel] || rawLabel || 'Unknown'
+}
+
 export default function TransactionList({
   transactions,
   totalCount,
@@ -31,37 +60,26 @@ export default function TransactionList({
   const renderTransactionMessages = (messageTypes: string[]) => {
     if (messageTypes.length === 0) return 'No messages'
 
-    if (messageTypes.length === 1) {
-      return (
-        <span
-          className="reference-pill w-fit"
-          style={{
-            backgroundColor: `${colors.primary}20`,
-            color: colors.primary,
-          }}
-        >
-          {getTypeMsg(messageTypes[0])}
-        </span>
-      )
-    }
-
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <span
-          className="reference-pill w-fit"
+          className="reference-pill w-fit min-w-0 truncate"
           style={{
             backgroundColor: `${colors.primary}20`,
             color: colors.primary,
           }}
+          title={getTypeLabel(messageTypes[0])}
         >
-          {getTypeMsg(messageTypes[0])}
+          {getTypeLabel(messageTypes[0])}
         </span>
-        <span
-          className="text-xs font-semibold"
-          style={{ color: colors.primary }}
-        >
-          +{messageTypes.length - 1}
-        </span>
+        {messageTypes.length > 1 && (
+          <span
+            className="shrink-0 text-xs font-semibold"
+            style={{ color: colors.primary }}
+          >
+            +{messageTypes.length - 1}
+          </span>
+        )}
       </div>
     )
   }
@@ -111,7 +129,9 @@ export default function TransactionList({
               >
                 {tx.height}
               </Link>
-              <div>{renderTransactionMessages(tx.messageTypes)}</div>
+              <div className="min-w-0">
+                {renderTransactionMessages(tx.messageTypes)}
+              </div>
               <span
                 className="reference-pill w-fit"
                 style={getResultPillStyle(tx.success, colors)}

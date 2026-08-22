@@ -56,10 +56,10 @@ interface DistributionParamsShape {
 
 interface SlashingParamsShape {
   signedBlocksWindow?: string | number
-  minSignedPerWindow?: string | Uint8Array
+  minSignedPerWindow?: string
   downtimeJailDuration?: DurationLike
-  slashFractionDoubleSign?: string | Uint8Array
-  slashFractionDowntime?: string | Uint8Array
+  slashFractionDoubleSign?: string
+  slashFractionDowntime?: string
 }
 
 interface GovVotingParamsShape {
@@ -77,16 +77,19 @@ interface GovTallyParamsShape {
   vetoThreshold?: string
 }
 
-// Slashing fraction fields were raw protobuf bytes when queried directly via
-// ABCI; after round-tripping through Mongo/JSON they typically arrive as
-// plain decimal strings instead. Handle both shapes defensively.
-const formatRate = (value: string | Uint8Array | undefined): string => {
+// Slashing's Dec fields (min_signed_per_window, slash_fraction_*) are typed
+// as raw bytes by cosmjs-types (Uint8Array, not string, unlike mint's/
+// distribution's Dec fields below) — but the *content* of those bytes is
+// the same convention as any other ABCI-decoded Dec: LegacyDec.Marshal()'s
+// raw scaled-integer digit string (e.g. "500000000000000000" for 0.5), NOT
+// a human "0.5"-style decimal — that human form is what LCD/REST returns
+// instead, via MarshalJSON, a genuinely different serialization of the same
+// value (see formatDecPercent below). The API decodes the bytes to a plain
+// string server-side (so this only ever sees a string here) but does not
+// rescale them, so convertRateToPercent's raw/10^16 treatment still applies.
+const formatRate = (value: string | undefined): string => {
   if (value === undefined) return 'N/A'
-  if (typeof value === 'string') return convertRateToPercent(value)
-  if (value instanceof Uint8Array) {
-    return convertRateToPercent(new TextDecoder().decode(value))
-  }
-  return 'N/A'
+  return convertRateToPercent(value)
 }
 
 // Cosmos SDK sdk.Dec fields queried over LCD/REST (the steembridge and

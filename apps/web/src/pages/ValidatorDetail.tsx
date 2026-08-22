@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   FiAlertTriangle,
   FiChevronLeft,
-  FiShield,
-  FiKey,
   FiCheckCircle,
   FiXCircle,
   FiLoader,
@@ -18,10 +16,12 @@ import { formatAmount, getConvertedAmount } from '@dexplorer/shared'
 import {
   convertRateToPercent,
   parseDetailsLines,
-  fetchWithTimeout,
+  valoperToAccountAddress,
 } from '@/utils/helper'
 import ValidatorIcon from '@/components/ValidatorIcon'
 import CopyText from '@/components/ui/CopyText'
+import RecentAttestations from '@/components/ValidatorDetail/RecentAttestations'
+import RecentOracleSubmissions from '@/components/ValidatorDetail/RecentOracleSubmissions'
 
 const formatVotingPower = (tokens: string, bondDenom: string): string => {
   if (!bondDenom) return tokens
@@ -64,7 +64,6 @@ const getPubkeyHex = (consensusPubkey: string | null): string | null => {
 const ValidatorDetail: React.FC = () => {
   const { identity } = useParams<{ identity: string }>()
   const { colors } = useTheme()
-  const [keybaseUsername, setKeybaseUsername] = useState<string | null>(null)
 
   const {
     data: validator,
@@ -90,6 +89,14 @@ const ValidatorDetail: React.FC = () => {
     [validator]
   )
 
+  // The validator's plain "steem1..." account address — same underlying
+  // bytes as operatorAddress, just re-prefixed (see valoperToAccountAddress).
+  const accountAddress = useMemo(
+    () =>
+      validator ? valoperToAccountAddress(validator.operatorAddress) : null,
+    [validator]
+  )
+
   const uptime = useMemo(() => {
     if (!validator?.uptime) return null
     return formatUptime(
@@ -97,30 +104,6 @@ const ValidatorDetail: React.FC = () => {
       validator.uptime.signedBlocksWindow
     )
   }, [validator])
-
-  // Resolve Keybase identity to username
-  useEffect(() => {
-    if (!validator?.identity) return
-
-    let isMounted = true
-    const resolveUsername = async () => {
-      try {
-        const res = await fetchWithTimeout(
-          `https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${validator.identity}&fields=basics`
-        )
-        const data = await res.json()
-        if (isMounted && data?.them?.[0]?.basics?.username) {
-          setKeybaseUsername(data.them[0].basics.username)
-        }
-      } catch {
-        // Keybase API unavailable, show identity as plain text
-      }
-    }
-    resolveUsername()
-    return () => {
-      isMounted = false
-    }
-  }, [validator?.identity])
 
   if (isLoading) {
     return (
@@ -243,6 +226,16 @@ const ValidatorDetail: React.FC = () => {
                   style={{ color: colors.text.tertiary }}
                 />
               </div>
+            )}
+            {accountAddress && (
+              <Link
+                to={`/accounts/${accountAddress}`}
+                className="font-mono text-[12px] hover:opacity-70"
+                style={{ color: colors.primary }}
+                title="View account"
+              >
+                {accountAddress}
+              </Link>
             )}
             {validator.website && (
               <a
@@ -375,17 +368,16 @@ const ValidatorDetail: React.FC = () => {
       </div>
 
       {/* Info Cards */}
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <div className="reference-table-shell rounded-[14px]">
-          <div
-            className="border-b px-5 py-[15px] text-[14px] font-semibold"
-            style={{
-              borderColor: colors.border.primary,
-              color: colors.text.primary,
-            }}
-          >
-            Validator Information
-          </div>
+      <div className="reference-table-shell rounded-[14px]">
+        <div
+          className="border-b px-5 py-[15px] text-[14px] font-semibold"
+          style={{
+            borderColor: colors.border.primary,
+            color: colors.text.primary,
+          }}
+        >
+          Validator Information
+        </div>
           <div
             className="flex items-center justify-between border-b px-5 py-3"
             style={{ borderColor: colors.border.primary }}
@@ -517,69 +509,10 @@ const ValidatorDetail: React.FC = () => {
               </span>
             )}
           </div>
-        </div>
-
-        <div className="reference-table-shell rounded-[14px]">
-          <div
-            className="border-b px-5 py-[15px] text-[14px] font-semibold"
-            style={{
-              borderColor: colors.border.primary,
-              color: colors.text.primary,
-            }}
-          >
-            Security
-          </div>
-          <div
-            className="flex items-center gap-[10px] border-b px-5 py-[13px]"
-            style={{ borderColor: colors.border.primary }}
-          >
-            <FiShield
-              className="h-4 w-4"
-              style={{ color: colors.status.success }}
-            />
-            <span
-              className="text-[12.5px]"
-              style={{ color: colors.text.secondary }}
-            >
-              Validator signed the last block
-            </span>
-          </div>
-          {validator.identity && (
-            <div className="flex items-start gap-[10px] px-5 py-[13px]">
-              <FiKey
-                className="mt-0.5 h-4 w-4"
-                style={{ color: colors.status.info }}
-              />
-              <div className="flex flex-col gap-[2px]">
-                <span
-                  className="text-[12.5px]"
-                  style={{ color: colors.text.secondary }}
-                >
-                  Keybase Identity
-                </span>
-                {keybaseUsername ? (
-                  <a
-                    href={`https://keybase.io/${encodeURIComponent(keybaseUsername)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[12.5px] hover:underline"
-                    style={{ color: colors.primary }}
-                  >
-                    {keybaseUsername}
-                  </a>
-                ) : (
-                  <span
-                    className="font-mono text-[12.5px]"
-                    style={{ color: colors.text.primary }}
-                  >
-                    {validator.identity}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
       </div>
+
+      {identity && <RecentAttestations identity={identity} />}
+      {identity && <RecentOracleSubmissions identity={identity} />}
 
       {/* Delegator Info */}
       <div className="panel-surface flex flex-col gap-[6px] rounded-[14px] px-[22px] py-[18px]">

@@ -1,7 +1,7 @@
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import duration from 'dayjs/plugin/duration'
-import { toHex } from '@cosmjs/encoding'
+import { fromBech32, toBech32, toHex } from '@cosmjs/encoding'
 import { bech32 } from 'bech32'
 
 // Plain fetch() has no default timeout — a hung external API (e.g. Keybase,
@@ -98,6 +98,19 @@ export const isBech32Address = (address: string): boolean => {
     return encoded === address
   } catch {
     return false
+  }
+}
+
+// A validator's operator address ("steemvaloper1...") is the same
+// underlying bytes as its plain account address ("steem1..."), just a
+// different bech32 prefix — the same fact apps/api/src/chain/helpers.ts's
+// accountToValoperAddress relies on, just applied in reverse.
+export const valoperToAccountAddress = (address: string): string | null => {
+  try {
+    const { prefix, data } = fromBech32(address)
+    return toBech32(prefix.replace(/valoper$/, ''), data)
+  } catch {
+    return null
   }
 }
 

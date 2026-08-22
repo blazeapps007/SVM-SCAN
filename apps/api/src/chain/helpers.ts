@@ -15,13 +15,14 @@ export const isValidUrl = (urlString: string): boolean => {
   }
 }
 
-// Derive a validator's bech32 "valcons" consensus address from its
-// consensusPubkey (Cosmos SDK: sha256(rawEd25519Key)[0:20], bech32-encoded
-// with the chain's valcons prefix).
-export const pubkeyToValconsAddress = (
-  consensusPubkey: { typeUrl: string; value: Uint8Array } | undefined,
-  operatorAddress: string
-): string | null => {
+// The raw 20-byte consensus address (Cosmos SDK: sha256(rawEd25519Key)[0:20])
+// derived from a validator's consensusPubkey — shared by pubkeyToValconsAddress
+// (bech32-encoded) and pubkeyToConsAddressHex (hex-encoded) below, since a
+// block header's own proposer_address field is this same hash in *hex*, not
+// bech32, so matching a block's proposer to a validator needs the hex form.
+function consensusPubkeyToAddressBytes(
+  consensusPubkey: { typeUrl: string; value: Uint8Array } | undefined
+): Uint8Array | null {
   if (
     !consensusPubkey ||
     consensusPubkey.typeUrl !== '/cosmos.crypto.ed25519.PubKey'
@@ -29,10 +30,31 @@ export const pubkeyToValconsAddress = (
     return null
   }
   const { key } = Ed25519PubKey.decode(consensusPubkey.value)
-  const addressBytes = sha256(key).slice(0, 20)
+  return sha256(key).slice(0, 20)
+}
+
+// Derive a validator's bech32 "valcons" consensus address from its
+// consensusPubkey, bech32-encoded with the chain's valcons prefix.
+export const pubkeyToValconsAddress = (
+  consensusPubkey: { typeUrl: string; value: Uint8Array } | undefined,
+  operatorAddress: string
+): string | null => {
+  const addressBytes = consensusPubkeyToAddressBytes(consensusPubkey)
+  if (!addressBytes) return null
   const { prefix } = fromBech32(operatorAddress)
   const valconsPrefix = prefix.replace(/valoper$/, 'valcons')
   return toBech32(valconsPrefix, addressBytes)
+}
+
+// Same derivation, hex-encoded instead of bech32 — this is the form a block
+// header's proposer_address field (and lastCommit's signature addresses)
+// actually use, so resolving "which validator proposed/signed this block"
+// needs this, not the bech32 valcons address.
+export const pubkeyToConsAddressHex = (
+  consensusPubkey: { typeUrl: string; value: Uint8Array } | undefined
+): string | null => {
+  const addressBytes = consensusPubkeyToAddressBytes(consensusPubkey)
+  return addressBytes ? toHex(addressBytes).toUpperCase() : null
 }
 
 // This chain's bech32 account addresses are exactly the same 20 bytes as
@@ -57,6 +79,20 @@ export const accountToValoperAddress = (address: string): string | null => {
   try {
     const { prefix, data } = fromBech32(address)
     return toBech32(`${prefix}valoper`, data)
+  } catch {
+    return null
+  }
+}
+
+// The reverse of accountToValoperAddress — a validator's operator address
+// re-prefixed back to its plain self-delegation account address. Needed to
+// look up a validator's own transactions (e.g. oracle vote/prevote
+// submissions), which are indexed keyed by account-form sender addresses,
+// not the operator address.
+export const valoperToAccountAddress = (address: string): string | null => {
+  try {
+    const { prefix, data } = fromBech32(address)
+    return toBech32(prefix.replace(/valoper$/, ''), data)
   } catch {
     return null
   }

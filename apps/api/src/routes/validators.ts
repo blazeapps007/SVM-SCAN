@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify'
 import { fromBase64 } from '@cosmjs/encoding'
 import type {
   Coin,
+  ValidatorAttestation,
   ValidatorDetailResponse,
+  ValidatorOracleSubmission,
   ValidatorStats,
   ValidatorSummary,
 } from '@dexplorer/shared'
@@ -21,11 +23,26 @@ import {
   RewardClaimDoc,
 } from '../db/schemas/rewardClaim.schema'
 import {
+  BRIDGE_DEPOSITS_COLLECTION,
+  BridgeDepositDoc,
+} from '../db/schemas/bridgeDeposit.schema'
+import {
+  BRIDGE_WITHDRAWALS_COLLECTION,
+  BridgeWithdrawalDoc,
+} from '../db/schemas/bridgeWithdrawal.schema'
+import {
+  TRANSACTIONS_COLLECTION,
+  TransactionDoc,
+} from '../db/schemas/transaction.schema'
+import {
   querySigningInfo,
   queryValidatorCommission,
   queryValidatorOutstandingRewards,
 } from '../chain/abci'
-import { pubkeyToValconsAddress } from '../chain/helpers'
+import {
+  pubkeyToValconsAddress,
+  valoperToAccountAddress,
+} from '../chain/helpers'
 import {
   parsePagination,
   paginatedResponse,
@@ -33,6 +50,31 @@ import {
 } from '../utils/pagination'
 import type { Db } from 'mongodb'
 import { TtlCache } from '../utils/ttlCache'
+
+const ORACLE_MESSAGE_TYPES: Record<string, 'vote' | 'prevote'> = {
+  '/steemvm.oracle.data.v1.MsgAggregateExchangeRateVote': 'vote',
+  '/steemvm.oracle.data.v1.MsgAggregateExchangeRatePrevote': 'prevote',
+}
+
+// resolveUptime needs this validator's bech32 valcons address (for the ABCI
+// querySigningInfo call) — derived from its consensusPubkey, not stored
+// directly. (Resolving a block's *hex* proposer_address to a validator is a
+// different lookup — see ValidatorDoc.consAddressHex / db/validatorLookup.ts.)
+function getConsAddress(doc: ValidatorDoc): string | null {
+  if (!doc.consensusPubkey) return null
+  try {
+    const parsed = JSON.parse(doc.consensusPubkey) as {
+      typeUrl: string
+      value: string
+    }
+    return pubkeyToValconsAddress(
+      { typeUrl: parsed.typeUrl, value: fromBase64(parsed.value) },
+      doc.operatorAddress
+    )
+  } catch {
+    return null
+  }
+}
 
 const uptimeCache = new TtlCache<ValidatorDetailResponse['uptime']>(60_000)
 
@@ -95,6 +137,91 @@ async function getTotalRewardsClaimed(
     .toArray()
 }
 
+const ATTESTATION_LIMIT = 20
+
+async function getAttestations(
+  db: Db,
+  operatorAddress: string
+): Promise<ValidatorAttestation[]> {
+  const [depositDocs, withdrawalDocs] = await Promise.all([
+    db
+      .collection<BridgeDepositDoc>(BRIDGE_DEPOSITS_COLLECTION)
+      .find({ 'validatorConfirmations.validatorAddress': operatorAddress })
+      .sort({ idNum: -1 })
+      .limit(ATTESTATION_LIMIT)
+      .toArray(),
+    db
+      .collection<BridgeWithdrawalDoc>(BRIDGE_WITHDRAWALS_COLLECTION)
+      .find({ 'validatorConfirmations.validatorAddress': operatorAddress })
+      .sort({ idNum: -1 })
+      .limit(ATTESTATION_LIMIT)
+      .toArray(),
+  ])
+
+  const deposits: ValidatorAttestation[] = depositDocs.map((deposit) => ({
+    type: 'deposit',
+    id: deposit.id,
+    txRef: deposit.txid,
+    asset: deposit.asset,
+    amountMillisteem: deposit.amountMillisteem,
+    status: deposit.status,
+    confirmedAt:
+      deposit.validatorConfirmations.find(
+        (c) => c.validatorAddress === operatorAddress
+      )?.timestamp ?? '0',
+  }))
+
+  const withdrawals: ValidatorAttestation[] = withdrawalDocs.map(
+    (withdrawal) => ({
+      type: 'withdrawal',
+      id: withdrawal.id,
+      txRef: withdrawal.burnTxHash,
+      asset: withdrawal.asset,
+      amountMillisteem: withdrawal.amountMillisteem,
+      status: withdrawal.status,
+      confirmedAt:
+        withdrawal.validatorConfirmations.find(
+          (c) => c.validatorAddress === operatorAddress
+        )?.timestamp ?? '0',
+    })
+  )
+
+  return [...deposits, ...withdrawals]
+    .sort((a, b) => Number(b.confirmedAt) - Number(a.confirmedAt))
+    .slice(0, ATTESTATION_LIMIT)
+}
+
+const ORACLE_SUBMISSION_LIMIT = 20
+
+async function getOracleSubmissions(
+  db: Db,
+  operatorAddress: string
+): Promise<ValidatorOracleSubmission[]> {
+  const accountAddress = valoperToAccountAddress(operatorAddress)
+  if (!accountAddress) return []
+
+  const docs = await db
+    .collection<TransactionDoc>(TRANSACTIONS_COLLECTION)
+    .find({
+      senders: accountAddress,
+      messageTypes: { $in: Object.keys(ORACLE_MESSAGE_TYPES) },
+    })
+    .sort({ height: -1 })
+    .limit(ORACLE_SUBMISSION_LIMIT)
+    .toArray()
+
+  return docs.map((tx) => {
+    const oracleType = tx.messageTypes.find((t) => t in ORACLE_MESSAGE_TYPES)
+    return {
+      hash: tx.hash,
+      height: tx.height,
+      timestamp: tx.timestamp.toISOString(),
+      success: tx.code === 0,
+      kind: oracleType ? ORACLE_MESSAGE_TYPES[oracleType] : 'vote',
+    }
+  })
+}
+
 async function resolveUptime(
   db: Db,
   tmClient: AppContext['tmClient'],
@@ -107,34 +234,25 @@ async function resolveUptime(
 
   let uptime: ValidatorDetailResponse['uptime'] = null
   try {
-    if (doc.consensusPubkey) {
-      const parsed = JSON.parse(doc.consensusPubkey) as {
-        typeUrl: string
-        value: string
-      }
-      const consAddress = pubkeyToValconsAddress(
-        { typeUrl: parsed.typeUrl, value: fromBase64(parsed.value) },
-        doc.operatorAddress
-      )
-      if (consAddress) {
-        const [signingInfo, slashingParams] = await Promise.all([
-          querySigningInfo(tmClient, consAddress),
-          db
-            .collection<ChainParamsDoc>(CHAIN_PARAMS_COLLECTION)
-            .findOne({ _id: 'slashing' }),
-        ])
-        if (signingInfo.valSigningInfo) {
-          const slashingParamsValue = slashingParams?.params as
-            | Record<string, unknown>
-            | undefined
-          const signedBlocksWindow = slashingParamsValue?.signedBlocksWindow
-          uptime = {
-            missedBlocksCounter:
-              signingInfo.valSigningInfo.missedBlocksCounter.toString(),
-            signedBlocksWindow: signedBlocksWindow
-              ? String(signedBlocksWindow)
-              : '0',
-          }
+    const consAddress = getConsAddress(doc)
+    if (consAddress) {
+      const [signingInfo, slashingParams] = await Promise.all([
+        querySigningInfo(tmClient, consAddress),
+        db
+          .collection<ChainParamsDoc>(CHAIN_PARAMS_COLLECTION)
+          .findOne({ _id: 'slashing' }),
+      ])
+      if (signingInfo.valSigningInfo) {
+        const slashingParamsValue = slashingParams?.params as
+          | Record<string, unknown>
+          | undefined
+        const signedBlocksWindow = slashingParamsValue?.signedBlocksWindow
+        uptime = {
+          missedBlocksCounter:
+            signingInfo.valSigningInfo.missedBlocksCounter.toString(),
+          signedBlocksWindow: signedBlocksWindow
+            ? String(signedBlocksWindow)
+            : '0',
         }
       }
     }
@@ -195,6 +313,16 @@ export function registerValidatorRoutes(
 ): void {
   const collection = db.collection<ValidatorDoc>(VALIDATORS_COLLECTION)
 
+  function findValidatorDoc(identity: string) {
+    return collection.findOne({
+      $or: [
+        { identity },
+        { moniker: identity },
+        { operatorAddress: identity },
+      ],
+    })
+  }
+
   app.get<{ Querystring: PageQuery & { status?: string } }>(
     '/validators',
     async (request) => {
@@ -252,14 +380,7 @@ export function registerValidatorRoutes(
   app.get<{ Params: { identity: string } }>(
     '/validators/:identity',
     async (request, reply) => {
-      const identity = request.params.identity
-      const doc = await collection.findOne({
-        $or: [
-          { identity },
-          { moniker: identity },
-          { operatorAddress: identity },
-        ],
-      })
+      const doc = await findValidatorDoc(request.params.identity)
       if (!doc) {
         return reply.status(404).send({ error: 'Validator not found' })
       }
@@ -291,6 +412,28 @@ export function registerValidatorRoutes(
         totalRewardsClaimed,
       }
       return response
+    }
+  )
+
+  app.get<{ Params: { identity: string } }>(
+    '/validators/:identity/attestations',
+    async (request, reply) => {
+      const doc = await findValidatorDoc(request.params.identity)
+      if (!doc) {
+        return reply.status(404).send({ error: 'Validator not found' })
+      }
+      return getAttestations(db, doc.operatorAddress)
+    }
+  )
+
+  app.get<{ Params: { identity: string } }>(
+    '/validators/:identity/oracle-submissions',
+    async (request, reply) => {
+      const doc = await findValidatorDoc(request.params.identity)
+      if (!doc) {
+        return reply.status(404).send({ error: 'Validator not found' })
+      }
+      return getOracleSubmissions(db, doc.operatorAddress)
     }
   )
 }

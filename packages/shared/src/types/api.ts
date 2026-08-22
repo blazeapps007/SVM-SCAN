@@ -42,6 +42,10 @@ export interface BlockSummary {
   hash: string
   time: string
   proposerAddress: string
+  // This block's proposer resolved to a validator moniker, when the raw hex
+  // proposerAddress matches an indexed validator's consensus address — null
+  // if no match (e.g. the validator has since unbonded/been removed).
+  proposerMoniker: string | null
   appHash: string
   txCount: number
 }
@@ -124,6 +128,28 @@ export interface ValidatorStats {
   activeCount: number
   totalCount: number
   avgCommission: number
+}
+
+export interface ValidatorAttestation {
+  type: 'deposit' | 'withdrawal'
+  id: string
+  // The Steem-side txid for a deposit, or the SVM-side burn tx hash for a
+  // withdrawal — whichever this attestation type actually references.
+  txRef: string
+  asset: string
+  amountMillisteem: string
+  status: string
+  // Unix seconds — when *this validator* attested, not the deposit/
+  // withdrawal's own creation time.
+  confirmedAt: string
+}
+
+export interface ValidatorOracleSubmission {
+  hash: string
+  height: number
+  timestamp: string
+  success: boolean
+  kind: 'vote' | 'prevote'
 }
 
 export interface ProposalSummary {

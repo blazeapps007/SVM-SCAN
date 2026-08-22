@@ -44,6 +44,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
     },
     { key: { identity: 1 }, name: 'identity' },
     { key: { status: 1, tokens: -1 }, name: 'status_tokens_desc' },
+    {
+      // Resolves a block's raw hex proposer_address to its validator.
+      key: { consAddressHex: 1 },
+      name: 'cons_address_hex_sparse',
+      sparse: true,
+    },
   ])
 
   await db.collection(PROPOSALS_COLLECTION).createIndexes([
@@ -62,6 +68,11 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { txid: 1 }, name: 'txid' },
     { key: { status: 1 }, name: 'status' },
     { key: { idNum: -1 }, name: 'id_num_desc' },
+    {
+      // GET /validators/:identity/attestations
+      key: { 'validatorConfirmations.validatorAddress': 1 },
+      name: 'validator_confirmations_address',
+    },
   ])
 
   await db.collection(BRIDGE_WITHDRAWALS_COLLECTION).createIndexes([
@@ -69,6 +80,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { burnTxHash: 1 }, name: 'burn_tx_hash' },
     { key: { status: 1 }, name: 'status' },
     { key: { idNum: -1 }, name: 'id_num_desc' },
+    {
+      key: { 'validatorConfirmations.validatorAddress': 1 },
+      name: 'validator_confirmations_address',
+    },
   ])
 
   await db.collection(REWARD_CLAIMS_COLLECTION).createIndexes([

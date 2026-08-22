@@ -7,6 +7,7 @@ import { apiClient } from '@/lib/apiClient'
 import { useTheme } from '@/theme/ThemeProvider'
 import { trimHash, timeFromNow } from '@/utils/helper'
 import SkeletonLoader from '@/components/ui/SkeletonLoader'
+import ValidatorIcon from '@/components/ValidatorIcon'
 
 const RecentBlocksCard: React.FC = React.memo(() => {
   const { colors } = useTheme()
@@ -45,10 +46,9 @@ const RecentBlocksCard: React.FC = React.memo(() => {
         <AnimatePresence mode="popLayout">
           {recentBlocks.length > 0
             ? recentBlocks.map((block, index) => {
-                const proposerDisplay = trimHash(
-                  block.proposerAddress || '',
-                  10
-                )
+                const proposerDisplay =
+                  block.proposerMoniker ??
+                  trimHash(block.proposerAddress || '', 10)
 
                 return (
                   <motion.div
@@ -85,14 +85,21 @@ const RecentBlocksCard: React.FC = React.memo(() => {
                       {trimHash(block.hash || '', 16)}
                     </span>
                     <div className="flex min-w-0 items-center gap-3">
-                      <div
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.65rem] font-semibold text-white"
-                        style={{
-                          background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
-                        }}
-                      >
-                        {proposerDisplay.slice(0, 1).toUpperCase()}
-                      </div>
+                      {block.proposerMoniker ? (
+                        <ValidatorIcon
+                          moniker={block.proposerMoniker}
+                          size="sm"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.65rem] font-semibold text-white"
+                          style={{
+                            background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
+                          }}
+                        >
+                          {proposerDisplay.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
                       <span
                         className="truncate text-[0.8rem]"
                         style={{ color: colors.text.secondary }}

@@ -21,6 +21,11 @@ export const validatorSchema = z.object({
   minSelfDelegation: z.string(),
   unbondingHeight: z.string(),
   consensusPubkey: z.string().nullable(),
+  // Hex consensus address derived from consensusPubkey (same encoding as a
+  // block header's proposer_address) — null only if consensusPubkey itself
+  // is null/unrecognized. Lets routes/blocks.ts resolve a block's raw hex
+  // proposer address back to this validator without re-deriving it per call.
+  consAddressHex: z.string().nullable(),
   uptime: uptimeSchema.nullable(),
   lastRefreshedAt: z.date(),
 })

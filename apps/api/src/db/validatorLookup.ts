@@ -23,6 +23,34 @@ export async function resolveValidatorMonikers(
   return new Map(docs.map((doc) => [doc.operatorAddress, doc.moniker]))
 }
 
+// Batched hex-consensus-address -> moniker resolution, for enriching a page
+// of blocks' `proposerAddress` (which is the same hex encoding a block
+// header's proposer_address field always uses — not a bech32 address of any
+// kind, so this can't reuse resolveValidatorMonikers above).
+export async function resolveValidatorMonikersByConsAddress(
+  db: Db,
+  consAddressHexes: readonly string[]
+): Promise<Map<string, string>> {
+  const uniqueAddresses = [...new Set(consAddressHexes)]
+  if (uniqueAddresses.length === 0) return new Map()
+
+  const docs = await db
+    .collection<ValidatorDoc>(VALIDATORS_COLLECTION)
+    .find(
+      { consAddressHex: { $in: uniqueAddresses } },
+      { projection: { consAddressHex: 1, moniker: 1 } }
+    )
+    .toArray()
+
+  return new Map(
+    docs
+      .filter((doc): doc is ValidatorDoc & { consAddressHex: string } =>
+        Boolean(doc.consAddressHex)
+      )
+      .map((doc) => [doc.consAddressHex, doc.moniker])
+  )
+}
+
 // Resolves a single address to a moniker, accepting either a valoper
 // address directly or a plain account address (re-prefixed via
 // accountToValoperAddress first) — used for the one-off MsgAttestDeposit

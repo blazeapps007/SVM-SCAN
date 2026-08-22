@@ -10,18 +10,23 @@ import {
   TRANSACTIONS_COLLECTION,
   TransactionDoc,
 } from '../db/schemas/transaction.schema'
+import { resolveValidatorMonikersByConsAddress } from '../db/validatorLookup'
 import {
   parsePagination,
   paginatedResponse,
   type PageQuery,
 } from '../utils/pagination'
 
-function toBlockSummary(doc: BlockDoc): BlockSummary {
+function toBlockSummary(
+  doc: BlockDoc,
+  monikers: Map<string, string>
+): BlockSummary {
   return {
     height: doc.height,
     hash: doc.hash,
     time: doc.time.toISOString(),
     proposerAddress: doc.proposerAddress,
+    proposerMoniker: monikers.get(doc.proposerAddress) ?? null,
     appHash: doc.appHash,
     txCount: doc.txCount,
   }
@@ -59,7 +64,17 @@ export function registerBlockRoutes(
       collection.estimatedDocumentCount(),
     ])
 
-    return paginatedResponse(docs.map(toBlockSummary), page, perPage, total)
+    const monikers = await resolveValidatorMonikersByConsAddress(
+      db,
+      docs.map((doc) => doc.proposerAddress)
+    )
+
+    return paginatedResponse(
+      docs.map((doc) => toBlockSummary(doc, monikers)),
+      page,
+      perPage,
+      total
+    )
   })
 
   app.get<{ Params: { height: string } }>(
@@ -77,8 +92,12 @@ export function registerBlockRoutes(
         return reply.status(404).send({ error: 'Block not found' })
       }
 
+      const monikers = await resolveValidatorMonikersByConsAddress(db, [
+        doc.proposerAddress,
+      ])
+
       const response: BlockDetailResponse = {
-        ...toBlockSummary(doc),
+        ...toBlockSummary(doc, monikers),
         txHashes: doc.txHashes,
       }
       return response

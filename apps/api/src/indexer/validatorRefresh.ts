@@ -4,6 +4,7 @@ import { toBase64 } from '@cosmjs/encoding'
 import { bondStatusToJSON } from 'cosmjs-types/cosmos/staking/v1beta1/staking'
 import { decodeLegacyDecString } from '@dexplorer/shared'
 import { queryValidators } from '../chain/abci'
+import { pubkeyToConsAddressHex } from '../chain/helpers'
 import {
   VALIDATORS_COLLECTION,
   ValidatorDoc,
@@ -54,6 +55,7 @@ export async function refreshValidators(
           minSelfDelegation: validator.minSelfDelegation,
           unbondingHeight: validator.unbondingHeight.toString(),
           consensusPubkey,
+          consAddressHex: pubkeyToConsAddressHex(validator.consensusPubkey),
           uptime: null,
           lastRefreshedAt: now,
         }

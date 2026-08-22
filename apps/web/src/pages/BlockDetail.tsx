@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/apiClient'
 import { useTheme } from '@/theme/ThemeProvider'
 import { getTypeMsg, timeFromNow, trimHash } from '@/utils/helper'
 import { getMessageTypePillStyle, getResultPillStyle } from '@/utils/pillStyle'
+import ValidatorIcon from '@/components/ValidatorIcon'
 
 const TYPE_LABELS: Record<string, string> = {
   Transfer: 'IBC Transfer',
@@ -85,6 +86,7 @@ const BlockDetail: React.FC = () => {
     if (!block) return null
 
     const proposer = block.proposerAddress || ''
+    const proposerMoniker = block.proposerMoniker
     const gasUsed = txRows.reduce((sum, tx) => sum + tx.gasUsed, 0)
     const gasWanted = txRows.reduce((sum, tx) => sum + tx.gasWanted, 0)
 
@@ -92,7 +94,8 @@ const BlockDetail: React.FC = () => {
       appHash: block.appHash?.toUpperCase() || '',
       blockHash: block.hash?.toUpperCase() || '—',
       proposer,
-      proposerInitial: trimHash(proposer || 'NA', 2)
+      proposerMoniker,
+      proposerInitial: trimHash(proposerMoniker || proposer || 'NA', 2)
         .replace('.', '')
         .slice(0, 2),
       timestamp: formatUtcTimestamp(block.time),
@@ -244,20 +247,34 @@ const BlockDetail: React.FC = () => {
               Proposer
             </span>
             <div className="flex items-center gap-2">
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.65rem] font-semibold text-white"
-                style={{
-                  background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
-                }}
-              >
-                {details.proposerInitial || 'NA'}
-              </span>
-              <span
-                className="text-[13px]"
-                style={{ color: colors.text.primary }}
-              >
-                {details.proposer ? trimHash(details.proposer, 14) : '—'}
-              </span>
+              {details.proposerMoniker ? (
+                <ValidatorIcon moniker={details.proposerMoniker} size="sm" />
+              ) : (
+                <span
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.65rem] font-semibold text-white"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
+                  }}
+                >
+                  {details.proposerInitial || 'NA'}
+                </span>
+              )}
+              {details.proposerMoniker ? (
+                <Link
+                  to={`/validators/${details.proposerMoniker}`}
+                  className="text-[13px] font-medium hover:opacity-70 transition-opacity"
+                  style={{ color: colors.primary }}
+                >
+                  {details.proposerMoniker}
+                </Link>
+              ) : (
+                <span
+                  className="text-[13px]"
+                  style={{ color: colors.text.primary }}
+                >
+                  {details.proposer ? trimHash(details.proposer, 14) : '—'}
+                </span>
+              )}
             </div>
           </div>
 

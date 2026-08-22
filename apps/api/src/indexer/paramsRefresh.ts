@@ -27,6 +27,35 @@ async function upsertParams(
     .updateOne({ _id: key }, { $set: doc }, { upsert: true })
 }
 
+// cosmjs-types decodes some ABCI Params fields as raw `bigint`/`Uint8Array` —
+// neither is JSON-safe (bigint can't be JSON.stringify'd at all; Uint8Array
+// serializes to a byte-array/Buffer-shaped object, not the string the
+// frontend expects). Passing these straight from the ABCI decode into Mongo
+// (as the other sources below still do, since their fields are already
+// plain strings/numbers) previously left the values silently mangled — the
+// frontend saw the wrong shape and rendered "NaN". Converting to plain
+// strings here, once, before storage avoids depending on how those non-JSON
+// types happen to survive a Mongo/JSON round-trip.
+//
+// decodeDecBytes is a pure byte->ASCII decode, not a value reinterpretation:
+// the bytes already are LegacyDec.Marshal()'s raw scaled-integer digit
+// string (e.g. "500000000000000000" for 0.5) — the same convention every
+// other ABCI-decoded Dec field in this codebase uses (see
+// decodeLegacyDecString in packages/shared) — NOT the human "0.5"-style
+// string LCD/REST returns for the same value via its own, different
+// MarshalJSON serialization. apps/web's convertRateToPercent (not
+// formatDecPercent, which is for the LCD/REST form) still does the /10^16
+// rescale on the frontend.
+function decodeDecBytes(value: Uint8Array | string): string {
+  return typeof value === 'string' ? value : Buffer.from(value).toString('utf8')
+}
+
+function toDurationShape(
+  duration: { seconds: bigint; nanos: number } | undefined
+): { seconds: string; nanos: number } {
+  return { seconds: (duration?.seconds ?? 0n).toString(), nanos: duration?.nanos ?? 0 }
+}
+
 interface ParamSource {
   key: string
   fetch: () => Promise<unknown>
@@ -41,11 +70,22 @@ export async function refreshParams(
   const sources: ParamSource[] = [
     {
       key: 'staking',
-      fetch: async () => (await queryStakingParams(tmClient)).params,
+      fetch: async () => {
+        const raw = (await queryStakingParams(tmClient)).params
+        if (!raw) return {}
+        // unbondingTime is a Duration (bigint seconds) — see decodeDecBytes'
+        // doc comment for why that can't be stored/returned as-is.
+        return { ...raw, unbondingTime: toDurationShape(raw.unbondingTime) }
+      },
     },
     {
       key: 'mint',
-      fetch: async () => (await queryMintParams(tmClient)).params,
+      fetch: async () => {
+        const raw = (await queryMintParams(tmClient)).params
+        if (!raw) return {}
+        // blocksPerYear is a bigint — same reasoning as decodeDecBytes.
+        return { ...raw, blocksPerYear: raw.blocksPerYear?.toString() ?? '0' }
+      },
     },
     {
       key: 'distribution',
@@ -53,17 +93,38 @@ export async function refreshParams(
     },
     {
       key: 'slashing',
-      fetch: async () => (await querySlashingParams(tmClient)).params,
+      fetch: async () => {
+        const raw = (await querySlashingParams(tmClient)).params
+        if (!raw) return {}
+        return {
+          signedBlocksWindow: raw.signedBlocksWindow?.toString() ?? '0',
+          minSignedPerWindow: decodeDecBytes(raw.minSignedPerWindow),
+          downtimeJailDuration: toDurationShape(raw.downtimeJailDuration),
+          slashFractionDoubleSign: decodeDecBytes(raw.slashFractionDoubleSign),
+          slashFractionDowntime: decodeDecBytes(raw.slashFractionDowntime),
+        }
+      },
     },
     {
       key: 'govVoting',
-      fetch: async () =>
-        (await queryGovParams(tmClient, 'voting')).votingParams,
+      fetch: async () => {
+        const raw = (await queryGovParams(tmClient, 'voting')).votingParams
+        if (!raw) return {}
+        // votingPeriod is a Duration (bigint seconds) — same JSON-safety
+        // issue as staking's unbondingTime, see decodeDecBytes' doc comment.
+        return { ...raw, votingPeriod: toDurationShape(raw.votingPeriod) }
+      },
     },
     {
       key: 'govDeposit',
-      fetch: async () =>
-        (await queryGovParams(tmClient, 'deposit')).depositParams,
+      fetch: async () => {
+        const raw = (await queryGovParams(tmClient, 'deposit')).depositParams
+        if (!raw) return {}
+        return {
+          ...raw,
+          maxDepositPeriod: toDurationShape(raw.maxDepositPeriod),
+        }
+      },
     },
     {
       key: 'govTally',

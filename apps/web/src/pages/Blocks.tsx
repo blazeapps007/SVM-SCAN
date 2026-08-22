@@ -7,6 +7,7 @@ import { apiClient } from '@/lib/apiClient'
 import { useTheme } from '@/theme/ThemeProvider'
 import { timeFromNow, trimHash } from '@/utils/helper'
 import CopyText from '@/components/ui/CopyText'
+import ValidatorIcon from '@/components/ValidatorIcon'
 
 const Blocks: React.FC = () => {
   const { colors } = useTheme()
@@ -51,7 +52,9 @@ const Blocks: React.FC = () => {
             </thead>
             <tbody>
               {blocks.map((block) => {
-                const proposerDisplay = trimHash(block.proposerAddress || '', 8)
+                const proposerDisplay =
+                  block.proposerMoniker ??
+                  trimHash(block.proposerAddress || '', 8)
 
                 return (
                   <tr
@@ -78,20 +81,37 @@ const Blocks: React.FC = () => {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.65rem] font-semibold text-white"
-                          style={{
-                            background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
-                          }}
-                        >
-                          {proposerDisplay.charAt(0) || '?'}
-                        </div>
-                        <span
-                          className="text-sm"
-                          style={{ color: colors.text.secondary }}
-                        >
-                          {proposerDisplay}
-                        </span>
+                        {block.proposerMoniker ? (
+                          <ValidatorIcon
+                            moniker={block.proposerMoniker}
+                            size="sm"
+                          />
+                        ) : (
+                          <div
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.65rem] font-semibold text-white"
+                            style={{
+                              background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
+                            }}
+                          >
+                            {proposerDisplay.charAt(0) || '?'}
+                          </div>
+                        )}
+                        {block.proposerMoniker ? (
+                          <Link
+                            to={`/validators/${block.proposerMoniker}`}
+                            className="text-sm font-medium hover:opacity-70 transition-opacity"
+                            style={{ color: colors.primary }}
+                          >
+                            {proposerDisplay}
+                          </Link>
+                        ) : (
+                          <span
+                            className="text-sm"
+                            style={{ color: colors.text.secondary }}
+                          >
+                            {proposerDisplay}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-5 py-4">
