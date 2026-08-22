@@ -17,6 +17,10 @@ import {
   ChainParamsDoc,
 } from '../db/schemas/chainParams.schema'
 import {
+  REWARD_CLAIMS_COLLECTION,
+  RewardClaimDoc,
+} from '../db/schemas/rewardClaim.schema'
+import {
   querySigningInfo,
   queryValidatorCommission,
   queryValidatorOutstandingRewards,
@@ -65,6 +69,30 @@ async function getBondDenom(db: Db): Promise<string> {
     .findOne({ _id: 'staking' })
   const params = stakingParams?.params as Record<string, unknown> | undefined
   return (params?.bondDenom as string | undefined) ?? ''
+}
+
+async function getTotalRewardsClaimed(
+  db: Db,
+  operatorAddress: string
+): Promise<Coin[]> {
+  return db
+    .collection<RewardClaimDoc>(REWARD_CLAIMS_COLLECTION)
+    .aggregate<Coin>([
+      { $match: { validatorAddress: operatorAddress } },
+      { $unwind: '$amount' },
+      {
+        $group: {
+          _id: '$amount.denom',
+          // $toDecimal avoids float precision loss summing these
+          // string-encoded atto amounts, same reasoning as the bridge
+          // stats aggregations.
+          sum: { $sum: { $toDecimal: '$amount.amount' } },
+        },
+      },
+      { $project: { _id: 0, denom: '$_id', amount: { $toString: '$sum' } } },
+      { $sort: { denom: 1 } },
+    ])
+    .toArray()
 }
 
 async function resolveUptime(
@@ -236,12 +264,14 @@ export function registerValidatorRoutes(
         return reply.status(404).send({ error: 'Validator not found' })
       }
 
-      const [bondedDocs, bondDenom, uptime, rewards] = await Promise.all([
-        collection.find({ status: 'BOND_STATUS_BONDED' }).toArray(),
-        getBondDenom(db),
-        resolveUptime(db, tmClient, doc),
-        resolveRewards(tmClient, doc.operatorAddress),
-      ])
+      const [bondedDocs, bondDenom, uptime, rewards, totalRewardsClaimed] =
+        await Promise.all([
+          collection.find({ status: 'BOND_STATUS_BONDED' }).toArray(),
+          getBondDenom(db),
+          resolveUptime(db, tmClient, doc),
+          resolveRewards(tmClient, doc.operatorAddress),
+          getTotalRewardsClaimed(db, doc.operatorAddress),
+        ])
       const totalBondedTokens = bondedDocs.reduce(
         (sum, v) => sum + (Number(v.tokens) || 0),
         0
@@ -258,6 +288,7 @@ export function registerValidatorRoutes(
         uptime,
         pendingRewards: rewards.pendingRewards,
         accumulatedCommission: rewards.accumulatedCommission,
+        totalRewardsClaimed,
       }
       return response
     }

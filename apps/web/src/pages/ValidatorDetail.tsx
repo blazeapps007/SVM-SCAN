@@ -448,6 +448,23 @@ const ValidatorDetail: React.FC = () => {
               className="text-[12.5px]"
               style={{ color: colors.text.secondary }}
             >
+              Total Rewards Claimed (Lifetime)
+            </span>
+            <span
+              className="font-mono text-[12.5px]"
+              style={{ color: colors.text.primary }}
+            >
+              {formatRewardCoins(validator.totalRewardsClaimed)}
+            </span>
+          </div>
+          <div
+            className="flex items-center justify-between border-b px-5 py-3"
+            style={{ borderColor: colors.border.primary }}
+          >
+            <span
+              className="text-[12.5px]"
+              style={{ color: colors.text.secondary }}
+            >
               Min Self Delegation
             </span>
             <span

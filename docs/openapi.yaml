@@ -447,6 +447,7 @@ paths:
                 uptime: { missedBlocksCounter: '0', signedBlocksWindow: '100' }
                 pendingRewards: [{ denom: asteem, amount: '6357304896302555505.419127201143333997' }]
                 accumulatedCommission: [{ denom: asteem, amount: '635730489630255550.541912720114333372' }]
+                totalRewardsClaimed: []
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -550,6 +551,63 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /proposals/{id}/votes:
+    get:
+      tags: [Proposals]
+      operationId: listProposalVotes
+      summary: List individual votes on a proposal
+      description: |
+        Live proxy to the chain's own gov-module LCD (`STEEMBRIDGE_LCD_URL`), not indexed —
+        the gov module only retains individual vote records while a proposal is still in its
+        deposit/voting period; once it concludes, per-voter records are pruned (the aggregate
+        `finalTallyResult` on `GET /proposals/{id}` is retained instead, since that's what
+        `proposalRefresh.ts` indexes separately). 503s if `STEEMBRIDGE_LCD_URL` isn't configured.
+        An empty page for a concluded proposal means "no longer available," not necessarily
+        "nobody voted."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 2
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProposalVote' }
+                  pagination:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      perPage: { type: integer }
+                      total: { type: integer }
+                    required: [page, perPage, total]
+                required: [data, pagination]
+              example:
+                data:
+                  - voter: steem103n2lmnkhpsjr8yajganm2x26pq9rsp39mw3hk
+                    options: [{ option: VOTE_OPTION_YES, weight: '1.000000000000000000' }]
+                    moniker: blaze.apps
+                  - voter: steem16d9lejs0hpqv4vswzn5yle8xpp9w92wx63g70f
+                    options: [{ option: VOTE_OPTION_YES, weight: '1.000000000000000000' }]
+                    moniker: xpilar.witness
+                  - voter: steem1am0j95eum7tezy8n9fwjrj0nldkwaskg9xphh8
+                    options: [{ option: VOTE_OPTION_YES, weight: '1.000000000000000000' }]
+                    moniker: blazed007
+                pagination: { page: 0, perPage: 25, total: 3 }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          description: STEEMBRIDGE_LCD_URL not configured
 
   /accounts/recent:
     get:
@@ -1576,7 +1634,11 @@ components:
                 - type: array
                   items: { $ref: '#/components/schemas/Coin' }
                 - type: 'null'
-          required: [website, details, delegatorShares, minSelfDelegation, unbondingHeight, consensusPubkey, uptime, pendingRewards, accumulatedCommission]
+            totalRewardsClaimed:
+              type: array
+              items: { $ref: '#/components/schemas/Coin' }
+              description: All-time sum of every reward/commission withdrawal ever indexed for this validator (delegator claims from it + its own commission claims combined), grouped by denom — computed from our own indexed `rewardClaims`, not a live chain query, so always present (empty array, never null, means no claims yet).
+          required: [website, details, delegatorShares, minSelfDelegation, unbondingHeight, consensusPubkey, uptime, pendingRewards, accumulatedCommission, totalRewardsClaimed]
 
     ValidatorStats:
       type: object
@@ -1624,6 +1686,23 @@ components:
             expedited: { type: boolean, description: Gov v1's expedited-proposal path (shorter voting period, higher pass threshold). }
             failedReason: { type: string, description: 'Set only if status is PROPOSAL_STATUS_FAILED (passed, but its messages then failed to execute on-chain); empty string otherwise, including for PROPOSAL_STATUS_REJECTED.' }
           required: [summary, proposer, depositEndTime, totalDeposit, finalTallyResult, messages, expedited, failedReason]
+
+    ProposalVote:
+      type: object
+      properties:
+        voter: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              option: { type: string, description: 'Raw Cosmos SDK VoteOption name, e.g. "VOTE_OPTION_YES".' }
+              weight: { type: string, description: 'Decimal fraction of this voter''s power assigned to this option — "1.000000000000000000" for a plain (non-weighted) vote.' }
+            required: [option, weight]
+        moniker:
+          oneOf: [{ type: string }, { type: 'null' }]
+          description: The voter's validator moniker, if `voter` is a validator's self-delegator account (re-prefixed to valoper form and matched against our indexed validators) — null for an ordinary delegator address.
+      required: [voter, options, moniker]
 
     ProposalStats:
       type: object

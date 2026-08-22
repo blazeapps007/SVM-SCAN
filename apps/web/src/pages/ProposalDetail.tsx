@@ -6,6 +6,7 @@ import ProposalHeader from '@/components/ProposalDetail/ProposalHeader'
 import ProposalSummary from '@/components/ProposalDetail/ProposalSummary'
 import ProposalMetadata from '@/components/ProposalDetail/ProposalMetadata'
 import VotingResults from '@/components/ProposalDetail/VotingResults'
+import ProposalVotesList from '@/components/ProposalDetail/ProposalVotesList'
 import ProposalMessages from '@/components/ProposalDetail/ProposalMessages'
 
 export default function ProposalDetail() {
@@ -75,6 +76,7 @@ export default function ProposalDetail() {
       <ProposalHeader />
       <ProposalSummary proposal={proposal} />
       <VotingResults proposal={proposal} />
+      <ProposalVotesList proposal={proposal} />
       <ProposalMetadata proposal={proposal} />
       <ProposalMessages proposal={proposal} />
     </div>

@@ -112,6 +112,12 @@ export interface ValidatorDetailResponse extends ValidatorSummary {
   // The validator's own cut of pendingRewards (what it would receive on
   // withdrawal) — a subset of pendingRewards, not additional to it.
   accumulatedCommission: Coin[] | null
+  // All-time sum of every reward/commission withdrawal ever indexed for
+  // this validator (delegator reward claims from it + its own commission
+  // claims combined), grouped by denom — computed from our own indexed
+  // `rewardClaims`, not a live chain query, so always present (never null;
+  // an empty array means no claims yet, not "unavailable").
+  totalRewardsClaimed: Coin[]
 }
 
 export interface ValidatorStats {
@@ -150,6 +156,20 @@ export interface ProposalDetailResponse extends ProposalSummary {
   // including for PROPOSAL_STATUS_REJECTED (a plain "voted No" outcome,
   // which has no failure reason to report).
   failedReason: string
+}
+
+export interface ProposalVoteOption {
+  option: string
+  weight: string
+}
+
+export interface ProposalVote {
+  voter: string
+  options: ProposalVoteOption[]
+  // The voter's validator moniker, if this address is a validator's
+  // self-delegator account (re-prefixed and matched against our indexed
+  // validators) — null for an ordinary (non-validator) delegator address.
+  moniker: string | null
 }
 
 export interface ProposalStats {

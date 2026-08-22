@@ -13,7 +13,7 @@ export {
   getSendersFromEvents,
 } from './utils/cosmos'
 
-export type { proposalStatus } from './utils/constant'
-export { proposalStatusList } from './utils/constant'
+export type { proposalStatus, voteOption } from './utils/constant'
+export { proposalStatusList, voteOptionList } from './utils/constant'
 
 export * from './types/api'

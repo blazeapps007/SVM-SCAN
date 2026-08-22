@@ -123,6 +123,7 @@ const TYPE = {
   MsgAggregateExchangeRatePrevote:
     '/steemvm.oracle.data.v1.MsgAggregateExchangeRatePrevote',
   MsgUpdateFeemarketParams: '/cosmos.evm.feemarket.v1.MsgUpdateParams',
+  MsgUpdateMintParams: '/cosmos.mint.v1beta1.MsgUpdateParams',
 }
 
 export interface DecodeMsg {
@@ -711,6 +712,122 @@ const decodeMsgUpdateFeemarketParams = (
   }
 }
 
+// MsgUpdateParams (cosmos.mint.v1beta1) — a gov-only parameter-change
+// message for the x/mint (inflation) module. Unlike the EVM feemarket one,
+// cosmjs-types@0.9.0 *does* generate a full decoder for this — but its
+// embedded `Params` type is missing `max_supply` (a newer field this chain
+// actually uses, verified by hand-walking a real proposal's raw tx bytes:
+// field 7, wire type 2, an sdk.Int encoded as a string — same convention
+// as every other Cosmos SDK big-integer/Dec custom type). The generated
+// decoder doesn't error on the unknown field, it just silently drops it,
+// which would leave maxSupply permanently missing — hand-decoded here
+// instead so nothing's lost.
+//   MsgUpdateParams: 1 authority (string), 2 params (embedded Params message)
+//   Params: 1 mint_denom (string), 2 inflation_rate_change (LegacyDec),
+//     3 inflation_max (LegacyDec), 4 inflation_min (LegacyDec),
+//     5 goal_bonded (LegacyDec), 6 blocks_per_year (varint uint64),
+//     7 max_supply (string, sdk.Int — "0" means no cap set)
+interface MintParamsFields {
+  mintDenom: string
+  inflationRateChange: string
+  inflationMax: string
+  inflationMin: string
+  goalBonded: string
+  blocksPerYear: string
+  maxSupply: string
+}
+
+const decodeMintParams = (value: Uint8Array): MintParamsFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MintParamsFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.mintDenom = reader.string()
+        break
+      case 2:
+        fields.inflationRateChange = decodeLegacyDecString(reader.string())
+        break
+      case 3:
+        fields.inflationMax = decodeLegacyDecString(reader.string())
+        break
+      case 4:
+        fields.inflationMin = decodeLegacyDecString(reader.string())
+        break
+      case 5:
+        fields.goalBonded = decodeLegacyDecString(reader.string())
+        break
+      case 6:
+        fields.blocksPerYear = reader.uint64().toString()
+        break
+      case 7:
+        fields.maxSupply = reader.string()
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    mintDenom: fields.mintDenom ?? '',
+    inflationRateChange: fields.inflationRateChange ?? '0.000000000000000000',
+    inflationMax: fields.inflationMax ?? '0.000000000000000000',
+    inflationMin: fields.inflationMin ?? '0.000000000000000000',
+    goalBonded: fields.goalBonded ?? '0.000000000000000000',
+    blocksPerYear: fields.blocksPerYear ?? '0',
+    maxSupply: fields.maxSupply ?? '0',
+  }
+}
+
+interface MsgUpdateMintParamsFields {
+  authority: string
+  params: MintParamsFields
+}
+
+const decodeMsgUpdateMintParams = (
+  value: Uint8Array
+): MsgUpdateMintParamsFields => {
+  const reader = new BinaryReader(value)
+  const end = reader.len
+  const fields: Partial<MsgUpdateMintParamsFields> = {}
+
+  while (reader.pos < end) {
+    const tag = reader.uint32()
+    const fieldNo = tag >>> 3
+    const wireType = tag & 7
+    switch (fieldNo) {
+      case 1:
+        fields.authority = reader.string()
+        break
+      case 2:
+        fields.params = decodeMintParams(reader.bytes())
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return {
+    authority: fields.authority ?? '',
+    params: fields.params ?? {
+      mintDenom: '',
+      inflationRateChange: '0.000000000000000000',
+      inflationMax: '0.000000000000000000',
+      inflationMin: '0.000000000000000000',
+      goalBonded: '0.000000000000000000',
+      blocksPerYear: '0',
+      maxSupply: '0',
+    },
+  }
+}
+
 // MsgGrantAllowance (cosmos.feegrant.v1beta1) — cosmjs-types has generated
 // types for the outer message, but its `allowance` field is a polymorphic
 // `google.protobuf.Any` (one of BasicAllowance/PeriodicAllowance/
@@ -1011,6 +1128,9 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgUpdateFeemarketParams:
       data = decodeMsgUpdateFeemarketParams(value)
+      break
+    case TYPE.MsgUpdateMintParams:
+      data = decodeMsgUpdateMintParams(value)
       break
     default:
       data = decodeUnknownMessage(value)

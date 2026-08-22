@@ -1,20 +1,35 @@
 import React from 'react'
 import { useTheme } from '@/theme/ThemeProvider'
 import type { ProposalDetailResponse } from '@dexplorer/shared'
+import { formatAmount, getConvertedAmount } from '@dexplorer/shared'
 
 interface VotingResultsProps {
   proposal: ProposalDetailResponse
 }
+
+// finalTallyResult's counts are bonded voting POWER (atto-denominated,
+// same native-token base units as a balance), not a literal number of
+// ballots cast — e.g. "104792000000000000000000" is 104,792 STEEM of
+// voting power, not 104 septillion votes. Converting through Number()
+// directly (as this component used to) both loses precision past
+// Number.MAX_SAFE_INTEGER and displays a meaningless huge integer.
+const toVotingPower = (raw: string): number =>
+  Number(getConvertedAmount(raw, 'asteem').converted) || 0
+
+const formatVotingPower = (raw: string): string =>
+  `${formatAmount(getConvertedAmount(raw, 'asteem').converted)} STEEM`
 
 export default function VotingResults({ proposal }: VotingResultsProps) {
   const { colors } = useTheme()
 
   if (!proposal.finalTallyResult) return null
 
-  const yesCount = Number(proposal.finalTallyResult.yesCount) || 0
-  const noCount = Number(proposal.finalTallyResult.noCount) || 0
-  const abstainCount = Number(proposal.finalTallyResult.abstainCount) || 0
-  const noWithVetoCount = Number(proposal.finalTallyResult.noWithVetoCount) || 0
+  const yesCount = toVotingPower(proposal.finalTallyResult.yesCount)
+  const noCount = toVotingPower(proposal.finalTallyResult.noCount)
+  const abstainCount = toVotingPower(proposal.finalTallyResult.abstainCount)
+  const noWithVetoCount = toVotingPower(
+    proposal.finalTallyResult.noWithVetoCount
+  )
   const totalVotes = yesCount + noCount + abstainCount + noWithVetoCount
 
   const calculatePercentage = (count: number) => {
@@ -24,26 +39,30 @@ export default function VotingResults({ proposal }: VotingResultsProps) {
   const voteTypes = [
     {
       label: 'Yes',
-      count: yesCount,
       percentage: calculatePercentage(yesCount),
+      formattedCount: formatVotingPower(proposal.finalTallyResult.yesCount),
       color: colors.status.success,
     },
     {
       label: 'No',
-      count: noCount,
       percentage: calculatePercentage(noCount),
+      formattedCount: formatVotingPower(proposal.finalTallyResult.noCount),
       color: colors.status.error,
     },
     {
       label: 'Abstain',
-      count: abstainCount,
       percentage: calculatePercentage(abstainCount),
+      formattedCount: formatVotingPower(
+        proposal.finalTallyResult.abstainCount
+      ),
       color: colors.text.tertiary,
     },
     {
       label: 'No w/ Veto',
-      count: noWithVetoCount,
       percentage: calculatePercentage(noWithVetoCount),
+      formattedCount: formatVotingPower(
+        proposal.finalTallyResult.noWithVetoCount
+      ),
       color: colors.status.warning,
     },
   ]
@@ -99,10 +118,10 @@ export default function VotingResults({ proposal }: VotingResultsProps) {
               {voteType.percentage.toFixed(1)}%
             </span>
             <span
-              className="text-[11.5px]"
+              className="font-mono text-[11.5px]"
               style={{ color: colors.text.tertiary }}
             >
-              {voteType.count.toLocaleString()} votes
+              {voteType.formattedCount}
             </span>
           </div>
         ))}

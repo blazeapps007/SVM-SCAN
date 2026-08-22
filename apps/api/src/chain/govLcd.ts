@@ -34,3 +34,41 @@ export async function fetchProposalExtra(
   const json = (await response.json()) as { proposal?: RawProposalExtra }
   return json.proposal ?? null
 }
+
+export interface RawProposalVote {
+  voter: string
+  options: { option: string; weight: string }[]
+}
+
+// GET /cosmos/gov/v1/proposals/{id}/votes — unlike fetchProposalExtra, this
+// is fetched live per-request rather than indexed (routes/proposals.ts
+// proxies it directly): the gov module's vote store only holds *individual*
+// votes while a proposal is still in its deposit/voting period — once a
+// proposal concludes, the aggregate tally is retained (that's what
+// proposalRefresh.ts indexes) but per-voter records are pruned, the same
+// "concluded" boundary the tally-refresh logic already treats specially.
+// So this can only reliably answer "who voted, and how" for a still-active
+// proposal; an empty result for a concluded one means "no longer
+// available," not necessarily "nobody voted." Returns an empty page (not a
+// throw) on any non-OK response, since this is a best-effort supplementary
+// view, not load-bearing.
+export async function fetchProposalVotes(
+  lcdUrl: string,
+  proposalId: number,
+  offset: number,
+  limit: number
+): Promise<{ votes: RawProposalVote[]; total: number }> {
+  const url =
+    `${lcdUrl}/cosmos/gov/v1/proposals/${proposalId}/votes` +
+    `?pagination.offset=${offset}&pagination.limit=${limit}&pagination.count_total=true`
+  const response = await withTimeout(fetch(url), 'gov:proposal-votes')
+  if (!response.ok) return { votes: [], total: 0 }
+  const json = (await response.json()) as {
+    votes?: RawProposalVote[]
+    pagination?: { total?: string }
+  }
+  return {
+    votes: json.votes ?? [],
+    total: Number(json.pagination?.total ?? 0),
+  }
+}

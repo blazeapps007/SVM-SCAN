@@ -9,7 +9,7 @@ import type {
   ExchangeRateVoteEntry,
   TransactionDetailResponse,
 } from '@dexplorer/shared'
-import { formatCoinAmount } from '@dexplorer/shared'
+import { formatCoinAmount, voteOptionList } from '@dexplorer/shared'
 import { apiClient } from '@/lib/apiClient'
 import { useTheme } from '@/theme/ThemeProvider'
 import {
@@ -23,10 +23,16 @@ import {
   trimHash,
 } from '@/utils/helper'
 import { getMessageTypePillStyle, getResultPillStyle } from '@/utils/pillStyle'
+import type { ThemeColors } from '@/theme/colors'
 
 const VALIDATOR_MESSAGE_TYPES = new Set([
   '/cosmos.staking.v1beta1.MsgCreateValidator',
   '/cosmos.staking.v1beta1.MsgEditValidator',
+])
+
+const VOTE_MESSAGE_TYPES = new Set([
+  '/cosmos.gov.v1.MsgVote',
+  '/cosmos.gov.v1.MsgVoteWeighted',
 ])
 
 interface ValidatorMessageData {
@@ -63,6 +69,8 @@ const TYPE_LABELS: Record<string, string> = {
   Timeout: 'IBC Timeout',
   WithdrawDelegatorReward: 'Withdraw Reward',
   Undelegate: 'Begin Unbonding',
+  Vote: 'Governance Vote',
+  VoteWeighted: 'Weighted Governance Vote',
   // EthereumTx deliberately isn't listed here — every MsgEthereumTx got
   // labeled "Contract Call" regardless of what it actually did, which was
   // wrong for a plain native-value transfer (no contract involved at all).
@@ -82,6 +90,56 @@ const getEvmTxKindLabel = (details: EvmTransactionDetails): string => {
   if (!details.to) return 'Contract Creation'
   if (details.toIsContract) return 'Contract Call'
   return 'STEEM Transfer'
+}
+
+// MsgVote/MsgVoteWeighted decode `option`/`options[].option` as the raw
+// cosmos.gov.v1.VoteOption wire number (confirmed live: a VOTE_OPTION_YES
+// vote's proposal_vote event carries `option: [{"option":1,...}]`), not a
+// string — look it up against voteOptionList rather than showing "1".
+const getVoteOptionLabel = (option: number): string =>
+  voteOptionList.find((o) => o.id === option)?.label ?? `Option ${option}`
+
+// Same yes=success/no=error/no-with-veto=warning/abstain=tertiary mapping
+// ProposalDetail's VotingResults uses, so a vote reads consistently
+// whether you're looking at the tx or the proposal it targeted.
+const getVoteOptionPillStyle = (
+  option: number,
+  colors: ThemeColors
+): { backgroundColor: string; color: string } => {
+  const semanticColor = voteOptionList.find((o) => o.id === option)?.color
+  const color =
+    semanticColor === 'green'
+      ? colors.status.success
+      : semanticColor === 'red'
+        ? colors.status.error
+        : semanticColor === 'orange'
+          ? colors.status.warning
+          : colors.text.tertiary
+  return { backgroundColor: `${color}20`, color }
+}
+
+// The proposal_vote event's `option` attribute is a JSON array string even
+// for a plain (non-weighted) MsgVote — e.g. '[{"option":1,"weight":"1.0..."}]'
+// — parse it the same way regardless of message type rather than assuming
+// it's ever a bare enum number.
+const formatVoteOptionAttr = (raw: string): string => {
+  try {
+    const parsed = JSON.parse(raw) as { option: number; weight: string }[]
+    if (parsed.length === 0) return raw
+    return parsed
+      .map((entry) => {
+        const label = getVoteOptionLabel(entry.option)
+        // A plain MsgVote always weights its single option 100% — only
+        // show the percentage when there's actually more than one option
+        // to weigh, so a normal vote just reads "Yes" instead of "Yes (100%)".
+        return parsed.length > 1
+          ? `${label} (${Math.round(Number(entry.weight) * 100)}%)`
+          : label
+      })
+      .join(', ')
+  } catch {
+    return raw
+  }
 }
 
 const TOKEN_TRANSFER_TYPE_LABELS: Record<string, string> = {
@@ -590,7 +648,23 @@ const TransactionDetail: React.FC = () => {
                     // string (parseCoinString has nothing to split here) —
                     // this is always native asteem on this chain's EVM side.
                     formatCoinAmount(attribute.value, 'asteem')
-                  : renderEventAttributeValue(attribute.value)}
+                  : event.type === 'proposal_vote' &&
+                      attribute.key === 'proposal_id'
+                    ? (
+                        <Link
+                          to={`/proposals/${attribute.value}`}
+                          style={{ color: colors.primary }}
+                        >
+                          #{attribute.value}
+                        </Link>
+                      )
+                    : event.type === 'proposal_vote' &&
+                        attribute.key === 'option'
+                      ? // Even a plain (non-weighted) vote emits its option
+                        // as a JSON [{option, weight}] array here, not a
+                        // bare enum number.
+                        formatVoteOptionAttr(attribute.value)
+                      : renderEventAttributeValue(attribute.value)}
             </span>
           </span>
         ))}
@@ -1246,7 +1320,36 @@ const TransactionDetail: React.FC = () => {
                 </div>
 
                 {message.fields.map((field, fieldIndex) =>
-                  field.key === 'exchangeRates' && Array.isArray(field.value) ? (
+                  field.key === 'options' &&
+                  VOTE_MESSAGE_TYPES.has(message.typeUrl) &&
+                  Array.isArray(field.value) ? (
+                    <div
+                      key={`${field.key}-${fieldIndex}`}
+                      className="flex flex-col gap-2 border-t py-[9px]"
+                      style={{ borderColor: colors.border.primary }}
+                    >
+                      <span
+                        className="text-[12.5px]"
+                        style={{ color: colors.text.secondary }}
+                      >
+                        Vote Options
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {(
+                          field.value as { option: number; weight: string }[]
+                        ).map((entry, entryIndex) => (
+                          <span
+                            key={`${entry.option}-${entryIndex}`}
+                            className="reference-pill font-mono"
+                            style={getVoteOptionPillStyle(entry.option, colors)}
+                          >
+                            {getVoteOptionLabel(entry.option)} (
+                            {Math.round(Number(entry.weight) * 100)}%)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : field.key === 'exchangeRates' && Array.isArray(field.value) ? (
                     <div
                       key={`${field.key}-${fieldIndex}`}
                       className="flex flex-col gap-2 border-t py-[9px]"
@@ -1306,6 +1409,23 @@ const TransactionDetail: React.FC = () => {
                           >
                             {stringifyField(field.value)}
                           </Link>
+                        ) : field.key === 'proposalId' &&
+                          VOTE_MESSAGE_TYPES.has(message.typeUrl) ? (
+                          <Link
+                            to={`/proposals/${String(field.value)}`}
+                            style={{ color: colors.primary }}
+                          >
+                            #{String(field.value)}
+                          </Link>
+                        ) : field.key === 'option' &&
+                          VOTE_MESSAGE_TYPES.has(message.typeUrl) &&
+                          typeof field.value === 'number' ? (
+                          <span
+                            className="reference-pill"
+                            style={getVoteOptionPillStyle(field.value, colors)}
+                          >
+                            {getVoteOptionLabel(field.value)}
+                          </span>
                         ) : (
                           stringifyField(field.value)
                         )}

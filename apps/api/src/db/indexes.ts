@@ -6,6 +6,7 @@ import { PROPOSALS_COLLECTION } from './schemas/proposal.schema'
 import { LIQUIDITY_POOLS_COLLECTION } from './schemas/liquidityPool.schema'
 import { BRIDGE_DEPOSITS_COLLECTION } from './schemas/bridgeDeposit.schema'
 import { BRIDGE_WITHDRAWALS_COLLECTION } from './schemas/bridgeWithdrawal.schema'
+import { REWARD_CLAIMS_COLLECTION } from './schemas/rewardClaim.schema'
 
 export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection(BLOCKS_COLLECTION).createIndexes([
@@ -68,5 +69,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { burnTxHash: 1 }, name: 'burn_tx_hash' },
     { key: { status: 1 }, name: 'status' },
     { key: { idNum: -1 }, name: 'id_num_desc' },
+  ])
+
+  await db.collection(REWARD_CLAIMS_COLLECTION).createIndexes([
+    { key: { id: 1 }, unique: true, name: 'id_unique' },
+    { key: { validatorAddress: 1 }, name: 'validator_address' },
   ])
 }
