@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { fromBase64 } from '@cosmjs/encoding'
 import type {
+  Coin,
   ValidatorDetailResponse,
   ValidatorStats,
   ValidatorSummary,
 } from '@dexplorer/shared'
+import { decodeLegacyDecString } from '@dexplorer/shared'
 import type { AppContext } from '../server'
 import {
   VALIDATORS_COLLECTION,
@@ -14,7 +16,11 @@ import {
   CHAIN_PARAMS_COLLECTION,
   ChainParamsDoc,
 } from '../db/schemas/chainParams.schema'
-import { querySigningInfo } from '../chain/abci'
+import {
+  querySigningInfo,
+  queryValidatorCommission,
+  queryValidatorOutstandingRewards,
+} from '../chain/abci'
 import { pubkeyToValconsAddress } from '../chain/helpers'
 import {
   parsePagination,
@@ -25,6 +31,13 @@ import type { Db } from 'mongodb'
 import { TtlCache } from '../utils/ttlCache'
 
 const uptimeCache = new TtlCache<ValidatorDetailResponse['uptime']>(60_000)
+
+interface RewardsResult {
+  pendingRewards: Coin[] | null
+  accumulatedCommission: Coin[] | null
+}
+
+const rewardsCache = new TtlCache<RewardsResult>(15_000)
 
 function toSummary(
   doc: ValidatorDoc,
@@ -105,6 +118,49 @@ async function resolveUptime(
   return uptime
 }
 
+async function resolveRewards(
+  tmClient: AppContext['tmClient'],
+  operatorAddress: string
+): Promise<RewardsResult> {
+  const cached = rewardsCache.get(operatorAddress)
+  if (cached) {
+    return cached
+  }
+
+  let result: RewardsResult = {
+    pendingRewards: null,
+    accumulatedCommission: null,
+  }
+  try {
+    const [rewardsResponse, commissionResponse] = await Promise.all([
+      queryValidatorOutstandingRewards(tmClient, operatorAddress),
+      queryValidatorCommission(tmClient, operatorAddress),
+    ])
+    // Both responses' amounts are DecCoins — the raw ABCI-decoded digit
+    // string is the LegacyDec wire encoding (value * 10^18), not yet the
+    // human-decimal Dec value, exactly like delegatorShares.
+    result = {
+      pendingRewards: (rewardsResponse.rewards?.rewards ?? []).map(
+        (coin) => ({
+          denom: coin.denom,
+          amount: decodeLegacyDecString(coin.amount),
+        })
+      ),
+      accumulatedCommission: (
+        commissionResponse.commission?.commission ?? []
+      ).map((coin) => ({
+        denom: coin.denom,
+        amount: decodeLegacyDecString(coin.amount),
+      })),
+    }
+  } catch {
+    result = { pendingRewards: null, accumulatedCommission: null }
+  }
+
+  rewardsCache.set(operatorAddress, result)
+  return result
+}
+
 export function registerValidatorRoutes(
   app: FastifyInstance,
   { db, tmClient }: AppContext
@@ -180,10 +236,11 @@ export function registerValidatorRoutes(
         return reply.status(404).send({ error: 'Validator not found' })
       }
 
-      const [bondedDocs, bondDenom, uptime] = await Promise.all([
+      const [bondedDocs, bondDenom, uptime, rewards] = await Promise.all([
         collection.find({ status: 'BOND_STATUS_BONDED' }).toArray(),
         getBondDenom(db),
         resolveUptime(db, tmClient, doc),
+        resolveRewards(tmClient, doc.operatorAddress),
       ])
       const totalBondedTokens = bondedDocs.reduce(
         (sum, v) => sum + (Number(v.tokens) || 0),
@@ -199,6 +256,8 @@ export function registerValidatorRoutes(
         unbondingHeight: doc.unbondingHeight,
         consensusPubkey: doc.consensusPubkey,
         uptime,
+        pendingRewards: rewards.pendingRewards,
+        accumulatedCommission: rewards.accumulatedCommission,
       }
       return response
     }

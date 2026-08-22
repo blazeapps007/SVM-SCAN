@@ -18,6 +18,8 @@ const TYPE_LABELS: Record<string, string> = {
   Transfer: 'IBC Transfer',
   WithdrawDelegatorReward: 'Withdraw Reward',
   Undelegate: 'Begin Unbonding',
+  GrantAllowance: 'Grant Fee Allowance',
+  RevokeAllowance: 'Revoke Fee Allowance',
 }
 
 const formatUtcTimestamp = (value: string | undefined) => {
@@ -346,7 +348,7 @@ const BlockDetail: React.FC = () => {
             style={{ borderColor: colors.border.primary }}
           >
             <Link
-              to={`/txs/${tx.hash}`}
+              to={`/tx/${tx.hash}`}
               className="truncate font-mono text-[12.5px]"
               style={{ color: colors.primary }}
             >

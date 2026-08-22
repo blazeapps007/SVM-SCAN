@@ -4,6 +4,7 @@ export { decodeMsg } from './encoding/msg'
 export {
   convertFromMicroUnits,
   convertFromAttoUnits,
+  decodeLegacyDecString,
   getBaseDenom,
   getConvertedAmount,
   formatAmount,

@@ -58,6 +58,8 @@ const TYPE_LABELS: Record<string, string> = {
   AttestWithdrawalPayout: 'Attest Withdrawal Payout',
   AggregateExchangeRateVote: 'Oracle Vote',
   AggregateExchangeRatePrevote: 'Oracle Prevote',
+  GrantAllowance: 'Grant Fee Allowance',
+  RevokeAllowance: 'Revoke Fee Allowance',
   Timeout: 'IBC Timeout',
   WithdrawDelegatorReward: 'Withdraw Reward',
   Undelegate: 'Begin Unbonding',
@@ -107,7 +109,10 @@ const FUND_MOVEMENT_EVENT_TYPES = new Set(['transfer', 'coinbase'])
 
 // Attribute keys that repeat on nearly every event but never mean anything
 // to a reader (internal bookkeeping) — dropped from the compact summary line.
-const NOISY_ATTRIBUTE_KEYS = new Set(['msg_index'])
+// txHash is the ethereum_tx event's own copy of the outer Cosmos tx hash
+// (same value, just lowercased) — already shown at the top of this page, so
+// repeating it here is pure noise, not new information.
+const NOISY_ATTRIBUTE_KEYS = new Set(['msg_index', 'txHash'])
 
 // Friendly names for the module accounts this chain's bridge actually moves
 // funds through — `tx.moduleAccounts` resolves any bech32 address to its raw
@@ -121,7 +126,14 @@ const MODULE_ACCOUNT_LABELS: Record<string, string> = {
 }
 
 const humanizeModuleName = (name: string) =>
-  name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  name
+    .replace(/_/g, ' ')
+    // Most event attribute keys are snake_case, but the ethereum_tx event's
+    // are camelCase (ethereumTxHash, txGasUsed, ...) — without this, those
+    // rendered as one squished word ("EthereumTxHash") instead of readable
+    // separate words.
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 
 const formatUtcTimestamp = (value: string | undefined) => {
   if (!value) return '—'
@@ -262,6 +274,21 @@ const EvmExecutionPanel: React.FC<{
               </div>
             </div>
           )}
+
+          <div className="flex flex-col gap-1">
+            <span
+              className="text-[11.5px]"
+              style={{ color: colors.text.tertiary }}
+            >
+              Fee
+            </span>
+            <span
+              className="font-mono text-[12.5px]"
+              style={{ color: colors.text.primary }}
+            >
+              {formatTokenAmount(details.fee, '18', 'STEEM')}
+            </span>
+          </div>
 
           {details.tokenTransfers.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -415,8 +442,20 @@ const TransactionDetail: React.FC = () => {
           : 'EVM Transaction'
         : TYPE_LABELS[rawType] || rawType
 
+    // The outer Cosmos tx's `fee` is always empty for a MsgEthereumTx on this
+    // chain (the EVM ante handler deducts gas cost directly rather than
+    // through the standard Cosmos fee field) — fall back to the EVM
+    // execution details' computed fee (gasUsed * effectiveGasPrice) once
+    // that's loaded, rather than showing a blank "—" for every EVM tx.
+    const fee =
+      tx.fee.length > 0
+        ? formatFee(tx.fee)
+        : evmDetails
+          ? formatTokenAmount(evmDetails.fee, '18', 'STEEM')
+          : formatFee(tx.fee)
+
     return {
-      fee: formatFee(tx.fee),
+      fee,
       gasUsed: formatGas(tx.gasUsed),
       gasWanted: formatGas(tx.gasWanted),
       memo: tx.memo || '—',
@@ -546,7 +585,12 @@ const TransactionDetail: React.FC = () => {
             <span style={{ color: colors.text.primary }} title={attribute.value}>
               {attribute.key === 'exchange_rate'
                 ? `${attribute.value.split(',').length} pairs`
-                : renderEventAttributeValue(attribute.value)}
+                : event.type === 'ethereum_tx' && attribute.key === 'amount'
+                  ? // Bare wei, unlike a bank-module event's amount+denom
+                    // string (parseCoinString has nothing to split here) —
+                    // this is always native asteem on this chain's EVM side.
+                    formatCoinAmount(attribute.value, 'asteem')
+                  : renderEventAttributeValue(attribute.value)}
             </span>
           </span>
         ))}

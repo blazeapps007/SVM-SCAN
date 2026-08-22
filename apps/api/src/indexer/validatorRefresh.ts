@@ -2,6 +2,7 @@ import { Db } from 'mongodb'
 import { Tendermint37Client } from '@cosmjs/tendermint-rpc'
 import { toBase64 } from '@cosmjs/encoding'
 import { bondStatusToJSON } from 'cosmjs-types/cosmos/staking/v1beta1/staking'
+import { decodeLegacyDecString } from '@dexplorer/shared'
 import { queryValidators } from '../chain/abci'
 import {
   VALIDATORS_COLLECTION,
@@ -40,7 +41,15 @@ export async function refreshValidators(
           status: bondStatusToJSON(validator.status),
           jailed: validator.jailed,
           tokens: validator.tokens,
-          delegatorShares: validator.delegatorShares,
+          // delegatorShares is a Dec (cosmjs-types/ABCI decodes it as a raw
+          // fixed-point big-integer string, value * 10^18, with no decimal
+          // point) that is *also* denominated in the bond token's atto
+          // units — decode the Dec encoding here so the stored value is a
+          // plain human-decimal atto amount, exactly like `tokens`, ready
+          // for the frontend's normal atto->STEEM conversion. Skipping this
+          // left shares displayed 10^18x too large (e.g. "800000000000.00B
+          // STEEM" instead of "800 STEEM").
+          delegatorShares: decodeLegacyDecString(validator.delegatorShares),
           commissionRate: validator.commission?.commissionRates?.rate ?? '0',
           minSelfDelegation: validator.minSelfDelegation,
           unbondingHeight: validator.unbondingHeight.toString(),

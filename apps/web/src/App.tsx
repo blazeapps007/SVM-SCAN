@@ -101,7 +101,7 @@ function AppContent() {
             <Route path="/proposals" element={<Proposals />} />
             <Route path="/proposals/:id" element={<ProposalDetail />} />
             <Route path="/txs" element={<Transactions />} />
-            <Route path="/txs/:hash" element={<TransactionDetail />} />
+            <Route path="/tx/:hash" element={<TransactionDetail />} />
             <Route path="/ibc-transfers" element={<IBCTransfers />} />
             <Route path="/liquidity-pools" element={<LiquidityPools />} />
             <Route path="/bridge" element={<Bridge />} />

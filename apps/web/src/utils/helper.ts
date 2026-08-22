@@ -245,6 +245,17 @@ export const bridgeAssetSymbol = (asset: string): string =>
 export function parseCoinString(
   value: string
 ): { amount: string; denom: string } | null {
+  // A 0x-prefixed or bare hex hash/address (an EVM tx hash, a Tendermint tx
+  // hash, an EVM address) can match "digit run then letters" purely by
+  // coincidence — e.g. "0x55ec84cd..." reads as amount "0" + denom
+  // "x55ec84cd...". No real bank denom is ever 0x-prefixed or a long
+  // all-hex string, so bail out first rather than mis-parsing one of these
+  // as a coin amount (this shipped once, on the ethereum_tx event's
+  // ethereumTxHash/txHash/recipient attributes).
+  if (/^0x[0-9a-f]+$/i.test(value) || /^[0-9a-f]{20,}$/i.test(value)) {
+    return null
+  }
+
   const match = value.match(/^(\d+)([a-zA-Z][a-zA-Z0-9/-]*)$/)
   if (!match) return null
   return { amount: match[1], denom: match[2] }

@@ -122,7 +122,7 @@ const SVMNSRegistrationDetail: React.FC = () => {
           {registration.confirmTxHash && (
             <InfoRow label="Confirm Transaction">
               <Link
-                to={`/txs/${registration.confirmTxHash}`}
+                to={`/tx/${registration.confirmTxHash}`}
                 className="font-mono hover:opacity-70 transition-opacity"
                 style={{ color: colors.primary }}
               >

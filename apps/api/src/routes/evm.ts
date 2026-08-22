@@ -95,6 +95,9 @@ export function registerEvmRoutes(app: FastifyInstance): void {
           ? (await getEthCode(rpcUrl, tx.to)) !== '0x'
           : false
 
+        const gasUsed = BigInt(receipt.gasUsed || '0x0')
+        const gasPrice = BigInt(receipt.effectiveGasPrice || '0x0')
+
         const data: EvmTransactionDetails = {
           hash: tx.hash,
           status: receipt.status === '0x1' ? 'ok' : 'error',
@@ -103,7 +106,9 @@ export function registerEvmRoutes(app: FastifyInstance): void {
           to: tx.to,
           toIsContract,
           value: BigInt(tx.value || '0x0').toString(),
-          gasUsed: BigInt(receipt.gasUsed || '0x0').toString(),
+          gasUsed: gasUsed.toString(),
+          gasPrice: gasPrice.toString(),
+          fee: (gasUsed * gasPrice).toString(),
           tokenTransfers,
           explorerUrl: env.EVM_EXPLORER_API_URL
             ? `${env.EVM_EXPLORER_API_URL}/tx/${tx.hash}`

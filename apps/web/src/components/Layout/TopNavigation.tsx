@@ -33,7 +33,7 @@ const getPageMeta = (pathname: string) => {
     }
   }
 
-  if (pathname.startsWith('/txs/')) {
+  if (pathname.startsWith('/tx/')) {
     return {
       title: 'Transaction',
       subtitle: 'Transaction details and messages',
@@ -109,7 +109,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({ onMenuClick }) => {
     if (heightRegex.test(searchQuery)) {
       navigate(`/blocks/${searchQuery}`)
     } else if (txhashRegex.test(searchQuery)) {
-      navigate(`/txs/${searchQuery}`)
+      navigate(`/tx/${searchQuery}`)
     } else if (addrRegex.test(searchQuery)) {
       navigate(`/accounts/${searchQuery}`)
     } else {

@@ -50,9 +50,22 @@ import {
   MsgVoteWeighted,
 } from 'cosmjs-types/cosmos/gov/v1/tx'
 import { MsgUnjail } from 'cosmjs-types/cosmos/slashing/v1beta1/tx'
+import {
+  MsgGrantAllowance,
+  MsgRevokeAllowance,
+} from 'cosmjs-types/cosmos/feegrant/v1beta1/tx'
+import {
+  AllowedMsgAllowance,
+  BasicAllowance,
+  PeriodicAllowance,
+} from 'cosmjs-types/cosmos/feegrant/v1beta1/feegrant'
+import type { Any } from 'cosmjs-types/google/protobuf/any'
+import type { Timestamp } from 'cosmjs-types/google/protobuf/timestamp'
+import type { Duration } from 'cosmjs-types/google/protobuf/duration'
 import { BinaryReader } from 'cosmjs-types/binary'
 import { Keccak256 } from '@cosmjs/crypto'
 import { toHex } from '@cosmjs/encoding'
+import { decodeLegacyDecString } from '../utils/cosmos'
 
 const TYPE = {
   MsgSend: '/cosmos.bank.v1beta1.MsgSend',
@@ -96,6 +109,8 @@ const TYPE = {
   MsgRevoke: '/cosmos.authz.v1beta1.MsgRevoke',
   MsgTransfer: '/ibc.applications.transfer.v1.MsgTransfer',
   MsgSoftwareUpgrade: '/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade',
+  MsgGrantAllowance: '/cosmos.feegrant.v1beta1.MsgGrantAllowance',
+  MsgRevokeAllowance: '/cosmos.feegrant.v1beta1.MsgRevokeAllowance',
   MsgEthereumTx: '/cosmos.evm.vm.v1.MsgEthereumTx',
   MsgAttestDeposit: '/steemvm.steembridge.v1.MsgAttestDeposit',
   MsgBridgeOut: '/steemvm.steembridge.v1.MsgBridgeOut',
@@ -578,21 +593,6 @@ const decodeMsgAggregateExchangeRatePrevote = (
   }
 }
 
-// Cosmos SDK's LegacyDec ("sdk.Dec") wire encoding is the internal
-// fixed-point big integer (logical value * 10^18) written out as a plain
-// ASCII digit string — this converts that into the same human-decimal
-// string form ABCI-decoded Dec fields already arrive in elsewhere in this
-// codebase (e.g. gov tally's "0.334000000000000000"), by inserting a
-// decimal point 18 places from the right (LegacyDec always keeps exactly 18
-// decimal places).
-const decodeLegacyDecString = (raw: string): string => {
-  const negative = raw.startsWith('-')
-  const digits = (negative ? raw.slice(1) : raw).padStart(19, '0')
-  const whole = digits.slice(0, -18) || '0'
-  const fraction = digits.slice(-18)
-  return `${negative ? '-' : ''}${whole}.${fraction}`
-}
-
 // MsgUpdateParams (cosmos.evm.feemarket.v1) — a gov-only parameter-change
 // message for the EVM feemarket module (controls EIP-1559 base fee behavior
 // and the chain's minimum gas price). cosmjs-types has no generated types
@@ -708,6 +708,91 @@ const decodeMsgUpdateFeemarketParams = (
       minGasPrice: '0.000000000000000000',
       minGasMultiplier: '0.000000000000000000',
     },
+  }
+}
+
+// MsgGrantAllowance (cosmos.feegrant.v1beta1) — cosmjs-types has generated
+// types for the outer message, but its `allowance` field is a polymorphic
+// `google.protobuf.Any` (one of BasicAllowance/PeriodicAllowance/
+// AllowedMsgAllowance) that the generated decoder leaves as raw
+// {typeUrl, value: Uint8Array} — left undecoded, that's exactly the kind of
+// opaque bytes this file's decoders exist to avoid. Decode the Any's inner
+// bytes against whichever concrete allowance type its typeUrl names
+// (verified live: tx 8DEB941F...B034DC carries a BasicAllowance with an
+// empty spend_limit and no expiration, i.e. an unlimited allowance).
+// AllowedMsgAllowance nests another Any allowance inside it, so this
+// recurses one level for that case.
+const timestampToIso = (ts?: Timestamp): string | null => {
+  if (!ts) return null
+  const millis = Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1e6)
+  return new Date(millis).toISOString()
+}
+
+const durationToString = (d?: Duration): string | null =>
+  d ? `${d.seconds.toString()}s` : null
+
+interface DecodedFeeAllowance {
+  typeUrl: string
+  spendLimit?: { denom: string; amount: string }[]
+  expiration?: string | null
+  periodSeconds?: string | null
+  periodSpendLimit?: { denom: string; amount: string }[]
+  periodCanSpend?: { denom: string; amount: string }[]
+  periodReset?: string | null
+  allowedMessages?: string[]
+  nestedAllowance?: DecodedFeeAllowance | null
+}
+
+const decodeFeeAllowance = (allowance?: Any): DecodedFeeAllowance | null => {
+  if (!allowance) return null
+  switch (allowance.typeUrl) {
+    case '/cosmos.feegrant.v1beta1.BasicAllowance': {
+      const basic = BasicAllowance.decode(allowance.value)
+      return {
+        typeUrl: allowance.typeUrl,
+        spendLimit: basic.spendLimit,
+        expiration: timestampToIso(basic.expiration),
+      }
+    }
+    case '/cosmos.feegrant.v1beta1.PeriodicAllowance': {
+      const periodic = PeriodicAllowance.decode(allowance.value)
+      return {
+        typeUrl: allowance.typeUrl,
+        spendLimit: periodic.basic?.spendLimit ?? [],
+        expiration: timestampToIso(periodic.basic?.expiration),
+        periodSeconds: durationToString(periodic.period),
+        periodSpendLimit: periodic.periodSpendLimit,
+        periodCanSpend: periodic.periodCanSpend,
+        periodReset: timestampToIso(periodic.periodReset),
+      }
+    }
+    case '/cosmos.feegrant.v1beta1.AllowedMsgAllowance': {
+      const allowed = AllowedMsgAllowance.decode(allowance.value)
+      return {
+        typeUrl: allowance.typeUrl,
+        allowedMessages: allowed.allowedMessages,
+        nestedAllowance: decodeFeeAllowance(allowed.allowance),
+      }
+    }
+    default:
+      return { typeUrl: allowance.typeUrl }
+  }
+}
+
+interface MsgGrantAllowanceFields {
+  granter: string
+  grantee: string
+  allowance: DecodedFeeAllowance | null
+}
+
+const decodeMsgGrantAllowance = (
+  value: Uint8Array
+): MsgGrantAllowanceFields => {
+  const msg = MsgGrantAllowance.decode(value)
+  return {
+    granter: msg.granter,
+    grantee: msg.grantee,
+    allowance: decodeFeeAllowance(msg.allowance),
   }
 }
 
@@ -893,6 +978,12 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgSoftwareUpgrade:
       data = MsgSoftwareUpgrade.decode(value)
+      break
+    case TYPE.MsgGrantAllowance:
+      data = decodeMsgGrantAllowance(value)
+      break
+    case TYPE.MsgRevokeAllowance:
+      data = MsgRevokeAllowance.decode(value)
       break
     case TYPE.MsgEthereumTx:
       data = decodeMsgEthereumTx(value)

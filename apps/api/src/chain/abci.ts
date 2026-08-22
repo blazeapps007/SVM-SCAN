@@ -26,6 +26,10 @@ import {
 import {
   QueryParamsRequest as QueryDistributionParamsRequest,
   QueryParamsResponse as QueryDistributionParamsResponse,
+  QueryValidatorOutstandingRewardsRequest,
+  QueryValidatorOutstandingRewardsResponse,
+  QueryValidatorCommissionRequest,
+  QueryValidatorCommissionResponse,
 } from 'cosmjs-types/cosmos/distribution/v1beta1/query'
 import {
   QueryParamsRequest as QuerySlashingParamsRequest,
@@ -218,6 +222,43 @@ export async function queryDistributionParams(
     req
   )
   return QueryDistributionParamsResponse.decode(value)
+}
+
+// Un-withdrawn rewards accrued for a validator (split between its
+// delegators and the validator's own commission cut) — changes every block,
+// so this is queried live rather than indexed/refreshed on a timer, the
+// same "live current-state" reasoning as account balances.
+export async function queryValidatorOutstandingRewards(
+  tmClient: Tendermint37Client,
+  validatorAddress: string
+): Promise<QueryValidatorOutstandingRewardsResponse> {
+  const queryClient = getQueryClient(tmClient)
+  const req = QueryValidatorOutstandingRewardsRequest.encode({
+    validatorAddress,
+  }).finish()
+  const { value } = await queryClient.queryAbci(
+    '/cosmos.distribution.v1beta1.Query/ValidatorOutstandingRewards',
+    req
+  )
+  return QueryValidatorOutstandingRewardsResponse.decode(value)
+}
+
+// The validator's own accumulated commission — a subset of
+// ValidatorOutstandingRewards above (that query includes delegator rewards
+// too), i.e. what the validator itself would receive on withdrawal.
+export async function queryValidatorCommission(
+  tmClient: Tendermint37Client,
+  validatorAddress: string
+): Promise<QueryValidatorCommissionResponse> {
+  const queryClient = getQueryClient(tmClient)
+  const req = QueryValidatorCommissionRequest.encode({
+    validatorAddress,
+  }).finish()
+  const { value } = await queryClient.queryAbci(
+    '/cosmos.distribution.v1beta1.Query/ValidatorCommission',
+    req
+  )
+  return QueryValidatorCommissionResponse.decode(value)
 }
 
 export async function querySlashingParams(

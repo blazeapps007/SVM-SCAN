@@ -98,7 +98,7 @@ export default function TransactionList({
               style={{ borderColor: colors.border.primary }}
             >
               <Link
-                to={`/txs/${tx.hash}`}
+                to={`/tx/${tx.hash}`}
                 className="truncate font-mono text-[12.5px]"
                 style={{ color: colors.primary }}
               >

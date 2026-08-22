@@ -55,6 +55,8 @@ const TYPE_LABELS: Record<string, string> = {
   AttestWithdrawalPayout: 'Attest Withdrawal Payout',
   AggregateExchangeRateVote: 'Oracle Vote',
   AggregateExchangeRatePrevote: 'Oracle Prevote',
+  GrantAllowance: 'Grant Fee Allowance',
+  RevokeAllowance: 'Revoke Fee Allowance',
   // Deliberately generic, not "Contract Call" — telling a plain native-value
   // transfer apart from an actual contract call needs the EVM execution
   // details (see TransactionDetail.tsx's getEvmTxKindLabel), which aren't
@@ -197,7 +199,7 @@ const Transactions: React.FC = () => {
                   <td className="px-5 py-4">
                     <div className="group flex items-center gap-2">
                       <Link
-                        to={`/txs/${tx.hash}`}
+                        to={`/tx/${tx.hash}`}
                         className="font-mono text-sm hover:opacity-70 transition-opacity"
                         style={{ color: colors.primary }}
                       >

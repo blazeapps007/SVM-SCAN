@@ -115,7 +115,7 @@ const BridgeWithdrawalDetail: React.FC = () => {
           <InfoRow label="Memo">{withdrawal.memo || '—'}</InfoRow>
           <InfoRow label="Burn Transaction">
             <Link
-              to={`/txs/${withdrawal.burnTxHash}`}
+              to={`/tx/${withdrawal.burnTxHash}`}
               className="font-mono hover:opacity-70 transition-opacity"
               style={{ color: colors.primary }}
             >

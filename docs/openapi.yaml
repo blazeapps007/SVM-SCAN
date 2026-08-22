@@ -429,22 +429,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidatorDetailResponse'
               example:
-                operatorAddress: steemvaloper107662cdhfe760n2lk9yhsv8fdve3pkzh4gyrhl
+                operatorAddress: steemvaloper103n2lmnkhpsjr8yajganm2x26pq9rsp30gpzv4
                 moniker: blaze.apps
                 identity: ''
-                status: BOND_STATUS_UNBONDING
-                jailed: true
-                tokens: '159885000000000000000000'
+                status: BOND_STATUS_BONDED
+                jailed: false
+                tokens: '792000000000000000000'
                 bondDenom: asteem
                 commissionRate: '100000000000000000'
-                votingPowerPercent: 19.78739517908017
+                votingPowerPercent: 0.7559966341118406
                 website: ''
                 details: owner=STM59ytBUdJ1DaSeFoz4GP5nBFiVBF2dpEDN4cHcR4wYFxWvE2ctR;active=STM5fvPvqwkwDTKXW1wsr7wPdeVXjetjvg1Wer8Zs7P24KFHht2Be;posting=STM5nr8yJLekbns9BNtx8FUxZTvphtfuNKVkTqCXswAjM6GTrQtdX
-                delegatorShares: '161500000000000000000000000000000000000000'
+                delegatorShares: '800000000000000000000.000000000000000000'
                 minSelfDelegation: '1'
-                unbondingHeight: '381834'
-                consensusPubkey: '{"typeUrl":"/cosmos.crypto.ed25519.PubKey","value":"CiDYdgQY7WlOsllEhbN8WL25EgFCf2uTCZVI9GbEgUmvVw=="}'
+                unbondingHeight: '20159'
+                consensusPubkey: '{"typeUrl":"/cosmos.crypto.ed25519.PubKey","value":"MH24df+F3VnXpX0LquscMfOdFwJIPOTgCosxpDk0Hy8="}'
                 uptime: { missedBlocksCounter: '0', signedBlocksWindow: '100' }
+                pendingRewards: [{ denom: asteem, amount: '6357304896302555505.419127201143333997' }]
+                accumulatedCommission: [{ denom: asteem, amount: '635730489630255550.541912720114333372' }]
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -830,16 +832,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvmTransactionDetails'
               example:
-                hash: '0xe5ca13579c3cf49d5d4fd99573fd69a92f03e008d6333589fde5ce559a0bc335'
+                hash: '0x6ea0d5e68d94d9c382f344cca86a5d229205c118560857b45fb8b7fdb02615db'
                 status: ok
                 method: null
-                from: '0x7fb5a561b74e7da7cd5fb1497830e96b3310d857'
-                to: '0x0d0f38e13194af032814b91f3a2f44473ee468de'
+                from: '0xeedf22d33cdf979110f32a5d21c9f3fb6ceec2c8'
+                to: '0x25a7400b6b62874b24714c45d1c6d90414c506de'
                 toIsContract: false
-                value: '5000000000000000000000'
+                value: '100000000000000000000'
                 gasUsed: '21000'
+                gasPrice: '0'
+                fee: '0'
                 tokenTransfers: []
-                explorerUrl: 'https://evmscan.steemscanner.com/tx/0xe5ca13579c3cf49d5d4fd99573fd69a92f03e008d6333589fde5ce559a0bc335'
+                explorerUrl: 'https://evmscan.steemscanner.com/tx/0x6ea0d5e68d94d9c382f344cca86a5d229205c118560857b45fb8b7fdb02615db'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1551,7 +1555,7 @@ components:
           properties:
             website: { type: string }
             details: { type: string }
-            delegatorShares: { type: string }
+            delegatorShares: { type: string, description: 'Human-decimal atto-denominated amount (18 fractional digits), e.g. "161500000000000000000000.000000000000000000" — already decoded from the raw LegacyDec wire encoding, so it needs only the standard atto->STEEM conversion like `tokens`, not a second Dec-decode step.' }
             minSelfDelegation: { type: string }
             unbondingHeight: { type: string }
             consensusPubkey:
@@ -1560,7 +1564,19 @@ components:
               oneOf:
                 - $ref: '#/components/schemas/ValidatorUptime'
                 - type: 'null'
-          required: [website, details, delegatorShares, minSelfDelegation, unbondingHeight, consensusPubkey, uptime]
+            pendingRewards:
+              description: 'Live (not indexed — accrues every block) un-withdrawn rewards, split between delegators and the validator''s own commission cut. Amounts are already Dec-decoded but still atto-denominated, same convention as delegatorShares. null if the live distribution-module query failed.'
+              oneOf:
+                - type: array
+                  items: { $ref: '#/components/schemas/Coin' }
+                - type: 'null'
+            accumulatedCommission:
+              description: "The validator's own cut of pendingRewards (what it would receive on withdrawal) — a subset of pendingRewards, not additional to it. Same null-on-failure convention."
+              oneOf:
+                - type: array
+                  items: { $ref: '#/components/schemas/Coin' }
+                - type: 'null'
+          required: [website, details, delegatorShares, minSelfDelegation, unbondingHeight, consensusPubkey, uptime, pendingRewards, accumulatedCommission]
 
     ValidatorStats:
       type: object
@@ -1699,11 +1715,13 @@ components:
         toIsContract: { type: boolean }
         value: { type: string, description: 'Native asteem transferred, 18 decimals.' }
         gasUsed: { type: string }
+        gasPrice: { type: string, description: 'Wei-per-gas actually charged (the receipt''s effectiveGasPrice). The wrapping Cosmos tx''s own `fee` is always empty for a MsgEthereumTx on this chain, so this (and `fee` below) is the only place the real cost is observable.' }
+        fee: { type: string, description: 'gasUsed * gasPrice, in the native 18-decimal asteem base unit — the actual amount deducted from `from` for this transaction.' }
         tokenTransfers:
           type: array
           items: { $ref: '#/components/schemas/EvmTokenTransfer' }
         explorerUrl: { oneOf: [{ type: string }, { type: 'null' }] }
-      required: [hash, status, method, from, to, toIsContract, value, gasUsed, tokenTransfers, explorerUrl]
+      required: [hash, status, method, from, to, toIsContract, value, gasUsed, gasPrice, fee, tokenTransfers, explorerUrl]
 
     AddressTokenHolding:
       type: object

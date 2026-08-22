@@ -88,7 +88,7 @@ export async function indexBlock(
     const senders = getSendersFromEvents(events)
     const ibcTransfer = extractIBCTransfer(events)
 
-    await indexLiquidityPoolsForTx(
+    const evmEnrichment = await indexLiquidityPoolsForTx(
       db,
       messages,
       height,
@@ -103,7 +103,11 @@ export async function indexBlock(
       log: result?.log ?? '',
       gasWanted: (result?.gasWanted ?? 0n).toString(),
       gasUsed: (result?.gasUsed ?? 0n).toString(),
-      fee,
+      // A MsgEthereumTx's real gas cost never appears in the Cosmos-level
+      // fee (see EvmTxEnrichment's doc comment) — fall back to the
+      // EVM-side computed fee only when the Cosmos-level one is empty, so
+      // an ordinary (non-EVM) tx's fee is untouched.
+      fee: fee.length > 0 ? fee : evmEnrichment.fee,
       memo,
       messages,
       messageTypes: messages.map((m) => m.typeUrl),

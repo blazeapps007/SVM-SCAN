@@ -23,6 +23,28 @@ export const convertFromAttoUnits = (amount: string): string => {
 }
 
 /**
+ * Cosmos SDK's LegacyDec ("sdk.Dec") wire encoding is the internal
+ * fixed-point big integer (logical value * 10^18) written out as a plain
+ * ASCII digit string with no decimal point — this converts that into the
+ * human-decimal string form (e.g. "0.334000000000000000") by inserting a
+ * decimal point 18 places from the right. Needed for any Dec-typed field
+ * decoded via cosmjs-types/ABCI (which leaves it in this raw wire form)
+ * before it can be run through the usual atto/micro unit conversion below —
+ * skipping this step for a Dec field that is *also* denominated in a
+ * bond token (e.g. a validator's delegatorShares) silently leaves the
+ * value scaled up by an extra 10^18.
+ * @param raw - The raw digit-string LegacyDec value
+ * @returns The human-decimal string form
+ */
+export const decodeLegacyDecString = (raw: string): string => {
+  const negative = raw.startsWith('-')
+  const digits = (negative ? raw.slice(1) : raw).padStart(19, '0')
+  const whole = digits.slice(0, -18) || '0'
+  const fraction = digits.slice(-18)
+  return `${negative ? '-' : ''}${whole}.${fraction}`
+}
+
+/**
  * Get base denomination by removing prefix
  * @param denom - The denomination string
  * @returns Base denomination without prefix

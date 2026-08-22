@@ -103,6 +103,15 @@ export interface ValidatorDetailResponse extends ValidatorSummary {
   unbondingHeight: string
   consensusPubkey: string | null
   uptime: ValidatorUptime | null
+  // Live (not indexed — accrues every block) un-withdrawn rewards. Amounts
+  // are already Dec-decoded (see decodeLegacyDecString) but still in the
+  // bond token's atto units, same convention as delegatorShares — the
+  // frontend's normal atto->STEEM conversion still applies. null if the
+  // live distribution-module query failed (best-effort, not load-bearing).
+  pendingRewards: Coin[] | null
+  // The validator's own cut of pendingRewards (what it would receive on
+  // withdrawal) — a subset of pendingRewards, not additional to it.
+  accumulatedCommission: Coin[] | null
 }
 
 export interface ValidatorStats {
@@ -209,6 +218,13 @@ export interface EvmTransactionDetails {
   toIsContract: boolean
   value: string
   gasUsed: string
+  // Wei-per-gas actually charged (the receipt's effectiveGasPrice) — the
+  // outer Cosmos tx's `fee` is always empty for a MsgEthereumTx on this
+  // chain, so this (and `fee` below) is the only place the real cost shows.
+  gasPrice: string
+  // gasUsed * gasPrice, in the native 18-decimal asteem base unit — the
+  // actual amount deducted from `from` for this transaction.
+  fee: string
   tokenTransfers: EvmTokenTransfer[]
   explorerUrl: string | null
 }

@@ -26,6 +26,16 @@ interface EthTransaction {
 interface EthTransactionReceipt {
   status: string
   gasUsed: string
+  // Wei-per-gas actually charged — for a legacy tx this equals the tx's own
+  // gasPrice, for an EIP-1559 tx it's min(maxFeePerGas, baseFee + tip), which
+  // isn't derivable from the tx alone without also knowing the block's base
+  // fee. The receipt reports it directly (standard post-London JSON-RPC
+  // field) so gasUsed * effectiveGasPrice gives the real fee paid — the
+  // outer Cosmos tx's auth_info.fee is always empty for a MsgEthereumTx on
+  // this chain (the EVM ante handler deducts gas cost directly, bypassing
+  // the standard Cosmos fee field entirely), so this is the only place the
+  // actual fee is observable.
+  effectiveGasPrice: string
   logs: EthLog[]
 }
 

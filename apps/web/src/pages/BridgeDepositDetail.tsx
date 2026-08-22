@@ -147,7 +147,7 @@ const BridgeDepositDetail: React.FC = () => {
           {deposit.mintTxHash && (
             <InfoRow label="Mint Transaction">
               <Link
-                to={`/txs/${deposit.mintTxHash}`}
+                to={`/tx/${deposit.mintTxHash}`}
                 className="font-mono hover:opacity-70 transition-opacity"
                 style={{ color: colors.primary }}
               >

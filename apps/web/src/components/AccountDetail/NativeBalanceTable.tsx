@@ -29,7 +29,6 @@ export default function NativeBalanceTable({
       amount: balance.amount,
       convertedAmount: converted,
       formattedAmount: formatAmount(converted),
-      rawFormattedAmount: formatAmount(balance.amount),
       denom: balance.denom,
       baseDenom: symbol,
       formattedDenom: symbol,
@@ -44,8 +43,7 @@ export default function NativeBalanceTable({
     key: string,
     label: string,
     value: string,
-    token: string,
-    raw?: string
+    token: string
   ) => (
     <div
       key={key}
@@ -66,14 +64,6 @@ export default function NativeBalanceTable({
       <span className="text-[11.5px]" style={{ color: colors.text.secondary }}>
         {token}
       </span>
-      {raw && (
-        <span
-          className="font-mono text-[11px]"
-          style={{ color: colors.text.tertiary }}
-        >
-          Raw: {raw}
-        </span>
-      )}
     </div>
   )
 
@@ -95,17 +85,13 @@ export default function NativeBalanceTable({
               `${index}-available`,
               'Available',
               formatted.formattedAmount,
-              formatted.baseDenom.toUpperCase(),
-              formatted.isConverted ? formatted.rawFormattedAmount : undefined
+              formatted.baseDenom.toUpperCase()
             )}
             {metricCard(
               `${index}-delegated`,
               'Delegated',
               stakedFormatted ? stakedFormatted.formattedAmount : '0',
-              formatted.baseDenom.toUpperCase(),
-              stakedFormatted?.isConverted
-                ? stakedFormatted.rawFormattedAmount
-                : undefined
+              formatted.baseDenom.toUpperCase()
             )}
           </React.Fragment>
         )
@@ -127,10 +113,7 @@ export default function NativeBalanceTable({
                 'staked-delegated',
                 'Delegated',
                 stakedFormatted.formattedAmount,
-                stakedFormatted.baseDenom.toUpperCase(),
-                stakedFormatted.isConverted
-                  ? stakedFormatted.rawFormattedAmount
-                  : undefined
+                stakedFormatted.baseDenom.toUpperCase()
               )}
             </React.Fragment>
           )

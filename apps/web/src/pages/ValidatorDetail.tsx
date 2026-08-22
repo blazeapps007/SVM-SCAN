@@ -13,7 +13,7 @@ import {
 import { fromBase64, toHex } from '@cosmjs/encoding'
 import { useTheme } from '@/theme/ThemeProvider'
 import { apiClient } from '@/lib/apiClient'
-import type { ValidatorDetailResponse } from '@dexplorer/shared'
+import type { Coin, ValidatorDetailResponse } from '@dexplorer/shared'
 import { formatAmount, getConvertedAmount } from '@dexplorer/shared'
 import {
   convertRateToPercent,
@@ -27,6 +27,17 @@ const formatVotingPower = (tokens: string, bondDenom: string): string => {
   if (!bondDenom) return tokens
   const { converted, base } = getConvertedAmount(tokens, bondDenom)
   return `${formatAmount(converted)} ${base.toUpperCase()}`
+}
+
+// pendingRewards/accumulatedCommission are Coin[] (almost always a single
+// asteem entry, but the distribution module always returns an array) —
+// null means the live query failed, [] means genuinely zero.
+const formatRewardCoins = (coins: Coin[] | null): string => {
+  if (!coins) return 'Unavailable'
+  if (coins.length === 0) return '0'
+  return coins
+    .map((coin) => formatVotingPower(coin.amount, coin.denom))
+    .join(', ')
 }
 
 const formatUptime = (
@@ -403,13 +414,50 @@ const ValidatorDetail: React.FC = () => {
               className="text-[12.5px]"
               style={{ color: colors.text.secondary }}
             >
+              Pending Rewards
+            </span>
+            <span
+              className="font-mono text-[12.5px]"
+              style={{ color: colors.text.primary }}
+            >
+              {formatRewardCoins(validator.pendingRewards)}
+            </span>
+          </div>
+          <div
+            className="flex items-center justify-between border-b px-5 py-3"
+            style={{ borderColor: colors.border.primary }}
+          >
+            <span
+              className="text-[12.5px]"
+              style={{ color: colors.text.secondary }}
+            >
+              Accumulated Commission
+            </span>
+            <span
+              className="font-mono text-[12.5px]"
+              style={{ color: colors.text.primary }}
+            >
+              {formatRewardCoins(validator.accumulatedCommission)}
+            </span>
+          </div>
+          <div
+            className="flex items-center justify-between border-b px-5 py-3"
+            style={{ borderColor: colors.border.primary }}
+          >
+            <span
+              className="text-[12.5px]"
+              style={{ color: colors.text.secondary }}
+            >
               Min Self Delegation
             </span>
             <span
               className="font-mono text-[12.5px]"
               style={{ color: colors.text.primary }}
             >
-              {validator.minSelfDelegation}
+              {formatVotingPower(
+                validator.minSelfDelegation,
+                validator.bondDenom
+              )}
             </span>
           </div>
           <div

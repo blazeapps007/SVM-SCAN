@@ -133,7 +133,7 @@ const IBCTransfers: React.FC = () => {
                   return (
                     <tr
                       key={`${transfer.hash}-${index}`}
-                      onClick={() => navigate(`/txs/${transfer.hash}`)}
+                      onClick={() => navigate(`/tx/${transfer.hash}`)}
                       className="reference-table-row cursor-pointer border-b"
                       style={{ borderColor: colors.border.primary }}
                     >
