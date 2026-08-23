@@ -348,8 +348,9 @@ const Parameters: React.FC = () => {
                 },
                 {
                   label: 'Total Burned',
-                  value: formatBridgeAssetTotalList(tokenomics?.totalBurned),
-                  tooltip: 'Lifetime principal burned on every bridge-out',
+                  value: formatCoinList(tokenomics?.totalBurned),
+                  tooltip:
+                    'Lifetime coins destroyed via STEEMBLACKHOLE — bridge-out principal plus the 25% tx-fee-split burn',
                 },
                 {
                   label: 'Community Pool',
@@ -765,131 +766,134 @@ const Parameters: React.FC = () => {
             </p>
           )}
         </ParameterCard>
-      </div>
 
-      {/* Oracle Price Feed */}
-      <div className="reference-table-shell rounded-[14px]">
-        <div
-          className="flex items-center gap-3 border-b px-5 py-4"
-          style={{ borderColor: colors.border.primary }}
-        >
+        {/* Oracle Price Feed — sits beside Oracle Parameters in the same
+            2-column grid rather than its own full-width row below, so it
+            fills the empty cell an odd-numbered card count would otherwise
+            leave next to it on large screens. */}
+        <div className="reference-table-shell rounded-[14px]">
           <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]"
-            style={{ backgroundColor: `${colors.status.success}20` }}
+            className="flex items-center gap-3 border-b px-5 py-4"
+            style={{ borderColor: colors.border.primary }}
           >
-            <FiTrendingUp
-              className="h-[17px] w-[17px]"
-              style={{ color: colors.status.success }}
-            />
-          </div>
-          <div className="flex flex-col leading-[1.25]">
-            <span
-              className="text-sm font-semibold"
-              style={{ color: colors.text.primary }}
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]"
+              style={{ backgroundColor: `${colors.status.success}20` }}
             >
-              Oracle Price Feed
-            </span>
-            <span
-              className="font-mono text-[11px]"
+              <FiTrendingUp
+                className="h-[17px] w-[17px]"
+                style={{ color: colors.status.success }}
+              />
+            </div>
+            <div className="flex flex-col leading-[1.25]">
+              <span
+                className="text-sm font-semibold"
+                style={{ color: colors.text.primary }}
+              >
+                Oracle Price Feed
+              </span>
+              <span
+                className="font-mono text-[11px]"
+                style={{ color: colors.text.tertiary }}
+              >
+                Finalized power-weighted-median rates, one per whitelisted pair
+              </span>
+            </div>
+          </div>
+
+          {ratesUnavailable ? (
+            <p
+              className="px-5 py-4 text-[13px]"
               style={{ color: colors.text.tertiary }}
             >
-              Finalized power-weighted-median rates, one per whitelisted pair
-            </span>
-          </div>
-        </div>
-
-        {ratesUnavailable ? (
-          <p
-            className="px-5 py-4 text-[13px]"
-            style={{ color: colors.text.tertiary }}
-          >
-            Oracle price feed unavailable on this deployment
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr
-                  className="border-b"
-                  style={{ borderColor: colors.border.primary }}
-                >
-                  <th className="reference-table-header px-5 py-3 text-left">
-                    Pair
-                  </th>
-                  <th className="reference-table-header px-5 py-3 text-left">
-                    Rate
-                  </th>
-                  <th className="reference-table-header px-5 py-3 text-right">
-                    Last Updated
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {ratesLoading && rates.length === 0 ? (
-                  [...Array(4)].map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-5 py-3" colSpan={3}>
-                        <div
-                          className="h-4 w-full animate-pulse rounded"
-                          style={{ backgroundColor: colors.border.secondary }}
-                        />
-                      </td>
-                    </tr>
-                  ))
-                ) : rates.length === 0 ? (
-                  <tr>
-                    <td
-                      className="px-5 py-4 text-[13px]"
-                      colSpan={3}
-                      style={{ color: colors.text.tertiary }}
-                    >
-                      No exchange rates reported yet
-                    </td>
+              Oracle price feed unavailable on this deployment
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr
+                    className="border-b"
+                    style={{ borderColor: colors.border.primary }}
+                  >
+                    <th className="reference-table-header px-5 py-3 text-left">
+                      Pair
+                    </th>
+                    <th className="reference-table-header px-5 py-3 text-left">
+                      Rate
+                    </th>
+                    <th className="reference-table-header px-5 py-3 text-right">
+                      Last Updated
+                    </th>
                   </tr>
-                ) : (
-                  rates.map((rate) => (
-                    <tr
-                      key={rate.pair}
-                      className="reference-table-row border-b"
-                      style={{ borderColor: colors.border.primary }}
-                    >
-                      <td className="px-5 py-3">
-                        <span
-                          className="text-[13px] font-medium"
-                          style={{ color: colors.text.primary }}
-                        >
-                          {rate.pair.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span
-                          className="font-mono text-[12.5px]"
-                          style={{ color: colors.text.primary }}
-                        >
-                          {parseFloat(rate.rate).toLocaleString(undefined, {
-                            maximumFractionDigits: 8,
-                          })}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <span
-                          className="text-[12.5px]"
-                          style={{ color: colors.text.tertiary }}
-                        >
-                          {timeFromNow(
-                            new Date(
-                              Number(rate.updateTime) * 1000
-                            ).toISOString()
-                          )}
-                        </span>
+                </thead>
+                <tbody>
+                  {ratesLoading && rates.length === 0 ? (
+                    [...Array(4)].map((_, i) => (
+                      <tr key={i}>
+                        <td className="px-5 py-3" colSpan={3}>
+                          <div
+                            className="h-4 w-full animate-pulse rounded"
+                            style={{ backgroundColor: colors.border.secondary }}
+                          />
+                        </td>
+                      </tr>
+                    ))
+                  ) : rates.length === 0 ? (
+                    <tr>
+                      <td
+                        className="px-5 py-4 text-[13px]"
+                        colSpan={3}
+                        style={{ color: colors.text.tertiary }}
+                      >
+                        No exchange rates reported yet
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  ) : (
+                    rates.map((rate) => (
+                      <tr
+                        key={rate.pair}
+                        className="reference-table-row border-b"
+                        style={{ borderColor: colors.border.primary }}
+                      >
+                        <td className="px-5 py-3">
+                          <span
+                            className="text-[13px] font-medium"
+                            style={{ color: colors.text.primary }}
+                          >
+                            {rate.pair.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span
+                            className="font-mono text-[12.5px]"
+                            style={{ color: colors.text.primary }}
+                          >
+                            {parseFloat(rate.rate).toLocaleString(undefined, {
+                              maximumFractionDigits: 8,
+                            })}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <span
+                            className="text-[12.5px]"
+                            style={{ color: colors.text.tertiary }}
+                          >
+                            {timeFromNow(
+                              new Date(
+                                Number(rate.updateTime) * 1000
+                              ).toISOString()
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

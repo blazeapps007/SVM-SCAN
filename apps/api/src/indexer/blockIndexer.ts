@@ -8,7 +8,7 @@ import {
   getSendersFromEvents,
   type DecodeMsg,
 } from '@dexplorer/shared'
-import { getBlock, getBlockResults } from '../chain/query'
+import { getBlock, getBlockResults, getFinalizeBlockEvents } from '../chain/query'
 import { BLOCKS_COLLECTION, BlockDoc } from '../db/schemas/block.schema'
 import {
   TRANSACTIONS_COLLECTION,
@@ -17,6 +17,7 @@ import {
 import { extractIBCTransfer } from './ibcTransfer'
 import { indexLiquidityPoolsForTx } from './liquidityPools'
 import { indexRewardClaimsForTx } from './rewardClaims'
+import { extractBurnedCoins } from './burnEvents'
 
 interface TxEventLike {
   type: string
@@ -51,9 +52,10 @@ export async function indexBlock(
   tmClient: Tendermint37Client,
   height: number
 ): Promise<void> {
-  const [block, blockResults] = await Promise.all([
+  const [block, blockResults, finalizeBlockEvents] = await Promise.all([
     getBlock(tmClient, height),
     getBlockResults(tmClient, height),
+    getFinalizeBlockEvents(height),
   ])
 
   const rawTxs = block.txs
@@ -131,6 +133,17 @@ export async function indexBlock(
       ? block.id
       : toHex(block.id as unknown as Uint8Array)
 
+  // Merges both sources rather than picking one: on this chain (CometBFT
+  // 0.38) beginBlockEvents/endBlockEvents are always empty and
+  // finalizeBlockEvents carries the real data (see getFinalizeBlockEvents'
+  // doc comment), but keeping both is harmless — an older Tendermint 0.37
+  // node would populate the former and return [] from the latter, never both.
+  const burned = extractBurnedCoins([
+    ...decodeEvents(blockResults.beginBlockEvents),
+    ...decodeEvents(blockResults.endBlockEvents),
+    ...finalizeBlockEvents,
+  ])
+
   const blockDoc: BlockDoc = {
     height,
     hash: blockHash.toUpperCase(),
@@ -139,6 +152,7 @@ export async function indexBlock(
     appHash: toHex(block.header.appHash).toUpperCase(),
     txCount: rawTxs.length,
     txHashes,
+    burned,
   }
 
   await db

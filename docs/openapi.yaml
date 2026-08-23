@@ -860,10 +860,14 @@ paths:
       summary: Chain-wide lifetime economic totals
       description: |
         Powers the Parameters page's "Tokenomics" section. Mostly lifetime aggregates computed
-        from indexed collections (`transactions`, `bridgeWithdrawals`, `rewardClaims`) rather than
-        a live chain query — the two exceptions are `totalStaked` (a live snapshot of currently
-        bonded tokens, not cumulative) and `communityPool` (a live ABCI query, `null` if it fails).
-        Cached server-side for 60s given the several full-collection aggregations involved.
+        from indexed collections (`transactions`, `bridgeWithdrawals`, `rewardClaims`, `blocks`)
+        rather than a live chain query — the two exceptions are `totalStaked` (a live snapshot of
+        currently bonded tokens, not cumulative) and `communityPool` (a live ABCI query, `null` if
+        it fails). `totalBurned` sums each block's `burned` field (the chain's STEEMBLACKHOLE
+        EndBlock burn-sweep event, its sole burn point) — this covers bridge-out principal *and*
+        the 25% tx-fee-split burn in one figure, but undercounts until every historical block has
+        been re-indexed with that field populated. Cached server-side for 60s given the several
+        full-collection aggregations involved.
       responses:
         '200':
           description: OK
@@ -876,7 +880,7 @@ paths:
                 totalBridgeFees: [{ asset: BRIDGE_ASSET_STEEM, amountMillisteem: '250' }]
                 totalRewardsDistributed: []
                 totalStaked: [{ denom: asteem, amount: '104792000000000000000000' }]
-                totalBurned: [{ asset: BRIDGE_ASSET_STEEM, amountMillisteem: '10000' }]
+                totalBurned: [{ denom: asteem, amount: '10000' }]
                 communityPool: [{ denom: asteem, amount: '1200000000000000000000.000000000000000000' }]
 
   /oracle/exchange-rates:
@@ -2125,8 +2129,8 @@ components:
           description: Current total bonded tokens across all BOND_STATUS_BONDED validators — a live snapshot, not a lifetime cumulative figure.
         totalBurned:
           type: array
-          items: { $ref: '#/components/schemas/BridgeAssetTotal' }
-          description: Lifetime sum of every bridge-out's principal, grouped by asset (burned via steemblackhole regardless of withdrawal status).
+          items: { $ref: '#/components/schemas/Coin' }
+          description: Lifetime sum of every coin destroyed via the chain's STEEMBLACKHOLE burn sweep (its sole burn point), grouped by denom — covers bridge-out principal and the 25% tx-fee-split burn together.
         communityPool:
           oneOf:
             - type: array

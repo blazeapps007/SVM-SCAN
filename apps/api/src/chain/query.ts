@@ -152,6 +152,51 @@ export async function getBlockResults(
   )
 }
 
+export interface RawBlockEvent {
+  type: string
+  attributes: { key: string; value: string }[]
+}
+
+// CometBFT 0.38 (which this chain runs — its SDK modules use
+// cosmossdk.io/core/appmodule's HasBeginBlocker/HasEndBlocker, ABCI 2.0)
+// merged the old separate BeginBlock/EndBlock ABCI calls into one
+// FinalizeBlock call. Its `block_results` RPC response carries the combined
+// non-tx events under `finalize_block_events` — @cosmjs/tendermint-rpc's
+// Tendermint37Client only looks for the older, separate
+// `begin_block_events`/`end_block_events` fields (see getBlockResults
+// above), which this node's responses no longer populate, so
+// BlockResultsResponse.beginBlockEvents/endBlockEvents always come back
+// empty here. This raw JSON-RPC call is the only way to reach those events
+// (e.g. the STEEMBLACKHOLE burn-sweep's "burn" event, see
+// indexer/burnEvents.ts) until @cosmjs/tendermint-rpc ships a comet38-aware
+// client this codebase adopts. Best-effort like getNetworkStatus's net_info
+// call below — no RPC failover, returns [] rather than throwing.
+export async function getFinalizeBlockEvents(
+  height: number
+): Promise<RawBlockEvent[]> {
+  try {
+    const response = await withTimeout(
+      fetch(env.RPC_ADDRESS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'block_results',
+          method: 'block_results',
+          params: { height: String(height) },
+        }),
+      }),
+      `block_results(${height})`
+    )
+    const data = (await response.json()) as {
+      result?: { finalize_block_events?: RawBlockEvent[] }
+    }
+    return data.result?.finalize_block_events ?? []
+  } catch {
+    return []
+  }
+}
+
 export async function getTx(
   tmClient: Tendermint37Client,
   hash: string

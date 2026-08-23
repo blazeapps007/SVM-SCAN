@@ -30,6 +30,7 @@ import {
   VALIDATORS_COLLECTION,
   ValidatorDoc,
 } from '../db/schemas/validator.schema'
+import { BLOCKS_COLLECTION, BlockDoc } from '../db/schemas/block.schema'
 import { queryCommunityPool } from '../chain/abci'
 import { TtlCache } from '../utils/ttlCache'
 
@@ -83,25 +84,19 @@ async function getTotalBridgeFees(db: Db): Promise<BridgeAssetTotal[]> {
     .toArray()
 }
 
-// Not status-filtered — the burn (steemblackhole) already happened by the
-// time a withdrawal is indexed at all, same reasoning as
-// BridgeWithdrawalStats.withdrawnByAsset (this is that same aggregation,
-// just surfaced here as "burned" for the tokenomics section).
-async function getTotalBurned(db: Db): Promise<BridgeAssetTotal[]> {
+// Sums every block's `burned` field (this chain's STEEMBLACKHOLE EndBlock
+// burn-sweep event, see indexer/burnEvents.ts) rather than deriving it from
+// bridgeWithdrawals — STEEMBLACKHOLE is the chain's SOLE burn point
+// (verified against the chain's own source), so this single aggregation
+// already covers bridge-out net amounts *and* the 25% tx-fee-split burn
+// (x/oracle/bridge/keeper/feesplit.go's SplitFees, every BeginBlock) with no
+// double-counting. Blocks indexed before this field existed have no
+// `burned` array and are skipped by $unwind — a full historical total needs
+// those blocks re-indexed.
+async function getTotalBurned(db: Db): Promise<Coin[]> {
   return db
-    .collection<BridgeWithdrawalDoc>(BRIDGE_WITHDRAWALS_COLLECTION)
-    .aggregate<BridgeAssetTotal>([
-      {
-        $group: {
-          _id: '$asset',
-          sum: { $sum: { $toDecimal: '$amountMillisteem' } },
-        },
-      },
-      {
-        $project: { _id: 0, asset: '$_id', amountMillisteem: { $toString: '$sum' } },
-      },
-      { $sort: { asset: 1 } },
-    ])
+    .collection<BlockDoc>(BLOCKS_COLLECTION)
+    .aggregate<Coin>(sumCoinArrayField('burned'))
     .toArray()
 }
 

@@ -502,12 +502,15 @@ export interface TokenomicsResponse {
   // a live snapshot (from our periodically-refreshed validators collection),
   // not a cumulative lifetime figure.
   totalStaked: Coin[]
-  // Lifetime sum of every bridge-out's principal (BridgeWithdrawal.
-  // amountMillisteem) — burned via steemblackhole on every withdrawal
-  // regardless of status, grouped by asset. The same underlying data as
-  // BridgeWithdrawalStats.withdrawnByAsset, just surfaced here as "burned"
-  // for the tokenomics section.
-  totalBurned: BridgeAssetTotal[]
+  // Lifetime sum of every coin actually destroyed via the chain's
+  // STEEMBLACKHOLE burn sweep (its sole burn point), grouped by denom —
+  // covers bridge-out net amounts *and* the 25% tx-fee-split burn
+  // (x/oracle/bridge/keeper/feesplit.go's SplitFees runs every BeginBlock;
+  // the sweep itself runs every EndBlock) in one figure, not just bridge
+  // withdrawals. Computed from each block's `burned` field — blocks indexed
+  // before that field existed are skipped, so this undercounts until a full
+  // historical re-index completes.
+  totalBurned: Coin[]
   // Live current balance of the distribution module's community pool —
   // null if the ABCI query failed (best-effort, not load-bearing).
   communityPool: Coin[] | null
