@@ -1,4 +1,4 @@
-import { Db } from 'mongodb'
+import { Db, WithId } from 'mongodb'
 import { VALIDATORS_COLLECTION, ValidatorDoc } from './schemas/validator.schema'
 import { accountToValoperAddress } from '../chain/helpers'
 
@@ -44,8 +44,9 @@ export async function resolveValidatorMonikersByConsAddress(
 
   return new Map(
     docs
-      .filter((doc): doc is ValidatorDoc & { consAddressHex: string } =>
-        Boolean(doc.consAddressHex)
+      .filter(
+        (doc): doc is WithId<ValidatorDoc> & { consAddressHex: string } =>
+          Boolean(doc.consAddressHex)
       )
       .map((doc) => [doc.consAddressHex, doc.moniker])
   )

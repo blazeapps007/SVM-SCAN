@@ -30,3 +30,7 @@ dist-ssr
 .trae
 .next
 .env
+
+# Real-domain deployment nginx config (real SSL cert paths, Cloudflare
+# specifics) — deploy/nginx/ holds the generic reference config instead.
+/nginx.conf
