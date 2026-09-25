@@ -13,6 +13,13 @@ const stringifyField = (value: unknown) => {
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean')
     return String(value)
+  // e.g. a precompile-address list — one item per line reads far better
+  // than a JSON array literal.
+  if (
+    Array.isArray(value) &&
+    value.every((item) => typeof item !== 'object' || item === null)
+  )
+    return value.length === 0 ? '—' : value.map(String).join('\n')
   if (typeof value === 'object') return safeStringify(value, 2)
   return String(value)
 }
@@ -103,13 +110,13 @@ export default function ProposalMessages({ proposal }: ProposalMessagesProps) {
                           ([nestedKey, nestedValue]) => (
                             <div
                               key={nestedKey}
-                              className="flex items-center justify-between gap-3 text-[12px]"
+                              className="flex items-start justify-between gap-3 text-[12px]"
                             >
                               <span style={{ color: colors.text.tertiary }}>
                                 {nestedKey}
                               </span>
                               <span
-                                className="break-all font-mono text-right"
+                                className="whitespace-pre-wrap break-all font-mono text-right"
                                 style={{ color: colors.text.primary }}
                               >
                                 {stringifyField(nestedValue)}
@@ -132,7 +139,7 @@ export default function ProposalMessages({ proposal }: ProposalMessagesProps) {
                         {field.key}
                       </span>
                       <div
-                        className="font-mono text-[12.5px] break-all md:max-w-[70%] md:text-right"
+                        className="whitespace-pre-wrap font-mono text-[12.5px] break-all md:max-w-[70%] md:text-right"
                         style={{ color: colors.text.primary }}
                       >
                         {typeof field.value === 'string' &&

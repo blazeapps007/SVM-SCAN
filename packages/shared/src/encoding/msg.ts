@@ -124,6 +124,7 @@ const TYPE = {
     '/steemvm.oracle.data.v1.MsgAggregateExchangeRatePrevote',
   MsgUpdateFeemarketParams: '/cosmos.evm.feemarket.v1.MsgUpdateParams',
   MsgUpdateMintParams: '/cosmos.mint.v1beta1.MsgUpdateParams',
+  MsgUpdateEvmParams: '/cosmos.evm.vm.v1.MsgUpdateParams',
 }
 
 export interface DecodeMsg {
@@ -828,6 +829,205 @@ const decodeMsgUpdateMintParams = (
   }
 }
 
+// MsgUpdateParams (cosmos.evm.vm.v1) — a gov-only parameter-change message
+// for the EVM module itself (EVM denom, extra EIPs, deploy/call access
+// control, which precompiles are active). No cosmjs-types support, same as
+// the feemarket one above. Field numbers from github.com/cosmos/evm v0.7.2
+// (the version this chain's go.mod pins), proto/cosmos/evm/vm/v1/evm.proto —
+// 2, 3, 5 and 6 are reserved on the wire — and cross-checked against
+// proposal #3's raw tx bytes vs its LCD JSON.
+//   MsgUpdateParams: 1 authority (string), 2 params (embedded Params message)
+//   Params: 1 evm_denom (string), 4 extra_eips (repeated int64, packed),
+//     7 evm_channels (repeated string), 8 access_control (AccessControl),
+//     9 active_static_precompiles (repeated string),
+//     10 history_serve_window (uint64),
+//     11 extended_denom_options (ExtendedDenomOptions: 1 extended_denom)
+//   AccessControl: 1 create, 2 call (both AccessControlType)
+//   AccessControlType: 1 access_type (enum), 2 access_control_list (repeated
+//     string)
+const EVM_ACCESS_TYPES = [
+  'ACCESS_TYPE_PERMISSIONLESS',
+  'ACCESS_TYPE_RESTRICTED',
+  'ACCESS_TYPE_PERMISSIONED',
+]
+
+interface EvmAccessControlTypeFields {
+  accessType: string
+  accessControlList: string[]
+}
+
+interface EvmParamsFields {
+  evmDenom: string
+  extraEips: string[]
+  evmChannels: string[]
+  accessControl: {
+    create: EvmAccessControlTypeFields
+    call: EvmAccessControlTypeFields
+  }
+  activeStaticPrecompiles: string[]
+  historyServeWindow: string
+  extendedDenom: string
+}
+
+const decodeEvmAccessControlType = (
+  value: Uint8Array
+): EvmAccessControlTypeFields => {
+  const reader = new BinaryReader(value)
+  let accessType = 0
+  const accessControlList: string[] = []
+
+  while (reader.pos < reader.len) {
+    const tag = reader.uint32()
+    switch (tag >>> 3) {
+      case 1:
+        accessType = reader.int32()
+        break
+      case 2:
+        accessControlList.push(reader.string())
+        break
+      default:
+        reader.skipType(tag & 7)
+        break
+    }
+  }
+
+  return {
+    accessType: EVM_ACCESS_TYPES[accessType] ?? `ACCESS_TYPE_${accessType}`,
+    accessControlList,
+  }
+}
+
+const decodeEvmAccessControl = (
+  value: Uint8Array
+): EvmParamsFields['accessControl'] => {
+  const reader = new BinaryReader(value)
+  // proto3 omits a default-valued sub-message entirely, so an all-default
+  // (permissionless, empty list) side may simply be absent from the bytes.
+  const empty = new Uint8Array()
+  let create = decodeEvmAccessControlType(empty)
+  let call = decodeEvmAccessControlType(empty)
+
+  while (reader.pos < reader.len) {
+    const tag = reader.uint32()
+    switch (tag >>> 3) {
+      case 1:
+        create = decodeEvmAccessControlType(reader.bytes())
+        break
+      case 2:
+        call = decodeEvmAccessControlType(reader.bytes())
+        break
+      default:
+        reader.skipType(tag & 7)
+        break
+    }
+  }
+
+  return { create, call }
+}
+
+// First string field (field 1) of a small wrapper message, e.g.
+// ExtendedDenomOptions { string extended_denom = 1; }.
+const decodeFirstStringField = (value: Uint8Array): string => {
+  const reader = new BinaryReader(value)
+  while (reader.pos < reader.len) {
+    const tag = reader.uint32()
+    if (tag >>> 3 === 1) return reader.string()
+    reader.skipType(tag & 7)
+  }
+  return ''
+}
+
+// extra_eips is proto3 `repeated int64`, packed by default (wire type 2), but
+// a decoder must also accept the unpacked form (wire type 0) per the spec.
+const readRepeatedInt64 = (
+  reader: BinaryReader,
+  wireType: number,
+  out: string[]
+): void => {
+  if (wireType !== 2) {
+    out.push(reader.int64().toString())
+    return
+  }
+  const end = reader.uint32() + reader.pos
+  while (reader.pos < end) out.push(reader.int64().toString())
+}
+
+const decodeEvmParams = (value: Uint8Array): EvmParamsFields => {
+  const reader = new BinaryReader(value)
+  const params: EvmParamsFields = {
+    evmDenom: '',
+    extraEips: [],
+    evmChannels: [],
+    accessControl: decodeEvmAccessControl(new Uint8Array()),
+    activeStaticPrecompiles: [],
+    historyServeWindow: '0',
+    extendedDenom: '',
+  }
+
+  while (reader.pos < reader.len) {
+    const tag = reader.uint32()
+    const wireType = tag & 7
+    switch (tag >>> 3) {
+      case 1:
+        params.evmDenom = reader.string()
+        break
+      case 4:
+        readRepeatedInt64(reader, wireType, params.extraEips)
+        break
+      case 7:
+        params.evmChannels.push(reader.string())
+        break
+      case 8:
+        params.accessControl = decodeEvmAccessControl(reader.bytes())
+        break
+      case 9:
+        params.activeStaticPrecompiles.push(reader.string())
+        break
+      case 10:
+        params.historyServeWindow = reader.uint64().toString()
+        break
+      case 11:
+        params.extendedDenom = decodeFirstStringField(reader.bytes())
+        break
+      default:
+        reader.skipType(wireType)
+        break
+    }
+  }
+
+  return params
+}
+
+interface MsgUpdateEvmParamsFields {
+  authority: string
+  params: EvmParamsFields
+}
+
+const decodeMsgUpdateEvmParams = (
+  value: Uint8Array
+): MsgUpdateEvmParamsFields => {
+  const reader = new BinaryReader(value)
+  let authority = ''
+  let params = decodeEvmParams(new Uint8Array())
+
+  while (reader.pos < reader.len) {
+    const tag = reader.uint32()
+    switch (tag >>> 3) {
+      case 1:
+        authority = reader.string()
+        break
+      case 2:
+        params = decodeEvmParams(reader.bytes())
+        break
+      default:
+        reader.skipType(tag & 7)
+        break
+    }
+  }
+
+  return { authority, params }
+}
+
 // MsgGrantAllowance (cosmos.feegrant.v1beta1) — cosmjs-types has generated
 // types for the outer message, but its `allowance` field is a polymorphic
 // `google.protobuf.Any` (one of BasicAllowance/PeriodicAllowance/
@@ -1131,6 +1331,9 @@ export const decodeMsg = (typeUrl: string, value: Uint8Array): DecodeMsg => {
       break
     case TYPE.MsgUpdateMintParams:
       data = decodeMsgUpdateMintParams(value)
+      break
+    case TYPE.MsgUpdateEvmParams:
+      data = decodeMsgUpdateEvmParams(value)
       break
     default:
       data = decodeUnknownMessage(value)
