@@ -15,11 +15,14 @@ services:
       # interface, and Docker's iptables rules bypass ufw, so a firewall
       # alone wouldn't keep it private.
       - '127.0.0.1:${HOST_PORT:-85}:4000'
-    # Inside the container 127.0.0.1 is the container itself — this makes
-    # "host.docker.internal" resolve to the Docker host (automatic on Docker
-    # Desktop, needed explicitly on Linux), e.g. for a MongoDB running there.
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+    networks:
+      - svm_scan_app
+    # MONGODB_URI in apps/api/.env points at the "mongo" service by name;
+    # waiting for its healthcheck avoids a fatal startup error while MongoDB
+    # is still initializing.
+    depends_on:
+      mongo:
+        condition: service_healthy
     restart: unless-stopped
     # Surfaces a stuck-but-still-running process in `docker ps`/`docker
     # inspect` (status: unhealthy) for monitoring. Note this alone does NOT
@@ -41,3 +44,37 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  mongo:
+    # Pinned to a major version: a floating "latest" can jump majors on a
+    # `docker compose pull` and refuse to open data files written by the old one.
+    image: mongo:8
+    # Credentials come from the repo-root .env (gitignored, see .env.example
+    # there) — only used to create the root user on the very first start,
+    # while the data volume is still empty.
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in the repo-root .env}
+    ports:
+      # Loopback-only, for admin tools on the host (mongosh, Compass via SSH
+      # tunnel) and for running the API outside Docker. The app container
+      # doesn't use this — it reaches MongoDB as mongo:27017 on svm_scan_app.
+      - '127.0.0.1:${MONGO_HOST_PORT:-27017}:27017'
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - svm_scan_app
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  svm_scan_app:
+    name: SVM_SCAN_APP
+
+volumes:
+  mongo_data:
