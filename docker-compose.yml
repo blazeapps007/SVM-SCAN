@@ -15,6 +15,11 @@ services:
       # interface, and Docker's iptables rules bypass ufw, so a firewall
       # alone wouldn't keep it private.
       - '127.0.0.1:${HOST_PORT:-85}:4000'
+    # Inside the container 127.0.0.1 is the container itself — this makes
+    # "host.docker.internal" resolve to the Docker host (automatic on Docker
+    # Desktop, needed explicitly on Linux), e.g. for a MongoDB running there.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     restart: unless-stopped
     # Surfaces a stuck-but-still-running process in `docker ps`/`docker
     # inspect` (status: unhealthy) for monitoring. Note this alone does NOT
