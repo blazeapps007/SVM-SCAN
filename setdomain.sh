@@ -9,7 +9,14 @@
 # Certbot's systemd timer renews the certificate automatically afterwards.
 # Safe to re-run, e.g. to add www or after moving servers.
 #
-# Usage: sudo ./setdomain.sh [domain] [email]
+# Usage: sudo bash setdomain.sh [domain] [email]
+
+# `sh setdomain.sh` runs dash on Debian/Ubuntu, which ignores the shebang and
+# lacks the bash features used below — re-run under bash instead. POSIX-only
+# syntax up to here.
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
 
 set -euo pipefail
 
