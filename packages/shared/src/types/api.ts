@@ -92,6 +92,19 @@ export interface ValidatorSummary {
   bondDenom: string
   commissionRate: string
   votingPowerPercent: number
+  // Country the validator's node was last seen in, from our RPC node's p2p
+  // peer list (moniker-matched). null when it isn't directly peered with our
+  // node or its moniker doesn't match. May be a sentry node's country. The
+  // node's IP is deliberately never exposed.
+  nodeLocation: ValidatorNodeLocation | null
+}
+
+export interface ValidatorNodeLocation {
+  // ISO 3166-1 alpha-2, e.g. "FR"
+  countryCode: string
+  countryName: string
+  // ISO timestamp of the last time this node was seen in the peer list
+  seenAt: string
 }
 
 export interface ValidatorUptime {

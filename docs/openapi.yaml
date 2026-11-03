@@ -395,6 +395,7 @@ paths:
                     bondDenom: asteem
                     commissionRate: '100000000000000000'
                     votingPowerPercent: 1.2008437313791251
+                    nodeLocation: null
                 pagination: { page: 0, perPage: 1, total: 13 }
 
   /validators/stats:
@@ -440,6 +441,7 @@ paths:
                 bondDenom: asteem
                 commissionRate: '100000000000000000'
                 votingPowerPercent: 0.7559966341118406
+                nodeLocation: { countryCode: FR, countryName: France, seenAt: '2026-11-03T10:52:18.664Z' }
                 website: ''
                 details: owner=STM59ytBUdJ1DaSeFoz4GP5nBFiVBF2dpEDN4cHcR4wYFxWvE2ctR;active=STM5fvPvqwkwDTKXW1wsr7wPdeVXjetjvg1Wer8Zs7P24KFHht2Be;posting=STM5nr8yJLekbns9BNtx8FUxZTvphtfuNKVkTqCXswAjM6GTrQtdX
                 delegatorShares: '800000000000000000000.000000000000000000'
@@ -1692,7 +1694,20 @@ components:
         bondDenom: { type: string }
         commissionRate: { type: string }
         votingPowerPercent: { type: number }
-      required: [operatorAddress, moniker, identity, status, jailed, tokens, bondDenom, commissionRate, votingPowerPercent]
+        nodeLocation:
+          oneOf:
+            - $ref: '#/components/schemas/ValidatorNodeLocation'
+            - type: 'null'
+          description: Country the validator's node was last seen in, from the indexed RPC node's p2p peer list (`net_info`), matched by node moniker. `null` when the validator isn't directly peered with that node or its node moniker differs. May be a sentry node's country. The node's IP is never exposed.
+      required: [operatorAddress, moniker, identity, status, jailed, tokens, bondDenom, commissionRate, votingPowerPercent, nodeLocation]
+
+    ValidatorNodeLocation:
+      type: object
+      properties:
+        countryCode: { type: string, description: 'ISO 3166-1 alpha-2, e.g. "FR"' }
+        countryName: { type: string }
+        seenAt: { type: string, format: date-time, description: Last time the node was seen in the peer list. }
+      required: [countryCode, countryName, seenAt]
 
     ValidatorUptime:
       type: object

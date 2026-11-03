@@ -27,6 +27,16 @@ export const validatorSchema = z.object({
   // proposer address back to this validator without re-deriving it per call.
   consAddressHex: z.string().nullable(),
   uptime: uptimeSchema.nullable(),
+  // Country of this validator's node, set by indexer/nodeLocationRefresh.ts
+  // (absent until first located). Country only — the IP is never stored.
+  nodeLocation: z
+    .object({
+      countryCode: z.string(),
+      countryName: z.string(),
+      seenAt: z.date(),
+    })
+    .nullable()
+    .optional(),
   lastRefreshedAt: z.date(),
 })
 

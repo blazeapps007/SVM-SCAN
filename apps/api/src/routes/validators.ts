@@ -102,6 +102,13 @@ function toSummary(
     commissionRate: doc.commissionRate,
     votingPowerPercent:
       totalBondedTokens > 0 ? (tokens / totalBondedTokens) * 100 : 0,
+    nodeLocation: doc.nodeLocation
+      ? {
+          countryCode: doc.nodeLocation.countryCode,
+          countryName: doc.nodeLocation.countryName,
+          seenAt: doc.nodeLocation.seenAt.toISOString(),
+        }
+      : null,
   }
 }
 

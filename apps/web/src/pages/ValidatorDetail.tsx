@@ -16,9 +16,11 @@ import { formatAmount, getConvertedAmount } from '@dexplorer/shared'
 import {
   convertRateToPercent,
   parseDetailsLines,
+  timeFromNow,
   valoperToAccountAddress,
 } from '@/utils/helper'
 import ValidatorIcon from '@/components/ValidatorIcon'
+import CountryFlag from '@/components/CountryFlag'
 import CopyText from '@/components/ui/CopyText'
 import RecentAttestations from '@/components/ValidatorDetail/RecentAttestations'
 import RecentOracleSubmissions from '@/components/ValidatorDetail/RecentOracleSubmissions'
@@ -248,6 +250,25 @@ const ValidatorDetail: React.FC = () => {
                 {validator.website}
               </a>
             )}
+            <div
+              className="flex items-center gap-1.5 text-[12.5px]"
+              style={{ color: colors.text.secondary }}
+              title={
+                validator.nodeLocation
+                  ? `Seen ${timeFromNow(validator.nodeLocation.seenAt)} in our RPC node's peer list. May be a sentry node rather than the validator itself.`
+                  : "Not directly connected to our RPC node, so its location can't be seen."
+              }
+            >
+              <span style={{ color: colors.text.tertiary }}>Node location:</span>
+              {validator.nodeLocation ? (
+                <>
+                  <CountryFlag code={validator.nodeLocation.countryCode} />
+                  {validator.nodeLocation.countryName}
+                </>
+              ) : (
+                'Unknown'
+              )}
+            </div>
           </div>
         </div>
         {validator.details && detailsLines ? (

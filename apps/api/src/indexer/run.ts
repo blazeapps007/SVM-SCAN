@@ -9,6 +9,7 @@ import { getOrCreateIndexerState, updateCheckpoint } from './checkpoint'
 import { backfillRange } from './backfill'
 import { startLiveTail } from './liveTail'
 import { refreshValidators } from './validatorRefresh'
+import { refreshNodeLocations } from './nodeLocationRefresh'
 import { refreshParams } from './paramsRefresh'
 import { refreshProposals } from './proposalRefresh'
 import { refreshBridgeDeposits } from './bridgeDepositRefresh'
@@ -60,6 +61,10 @@ export async function runIndexer(
   await refreshValidators(db, tmClient).catch((err) =>
     console.error('Initial validator refresh failed:', err)
   )
+  // After refreshValidators: it matches against the validator docs that creates.
+  await refreshNodeLocations(db, tmClient).catch((err) =>
+    console.error('Initial node location refresh failed:', err)
+  )
   await refreshProposals(db, tmClient).catch((err) =>
     console.error('Initial proposal refresh failed:', err)
   )
@@ -82,9 +87,10 @@ export async function runIndexer(
   startLiveTail(db, tmClient)
 
   setInterval(() => {
-    refreshValidators(db, tmClient).catch((err) =>
-      console.error('Validator refresh failed:', err)
-    )
+    refreshValidators(db, tmClient)
+      .catch((err) => console.error('Validator refresh failed:', err))
+      .then(() => refreshNodeLocations(db, tmClient))
+      .catch((err) => console.error('Node location refresh failed:', err))
   }, env.VALIDATOR_REFRESH_INTERVAL_MS)
 
   setInterval(() => {

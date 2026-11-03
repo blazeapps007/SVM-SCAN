@@ -12,6 +12,7 @@ import { apiClient } from '@/lib/apiClient'
 import { convertRateToPercent } from '@/utils/helper'
 import { useTheme } from '@/theme/ThemeProvider'
 import ValidatorIcon from '@/components/ValidatorIcon'
+import CountryFlag from '@/components/CountryFlag'
 import StatCard from '@/components/Home/StatCard'
 
 const PER_PAGE = 10
@@ -124,6 +125,12 @@ const Validators: React.FC = () => {
                 >
                   {v.moniker}
                 </span>
+                {v.nodeLocation && (
+                  <CountryFlag
+                    code={v.nodeLocation.countryCode}
+                    title={`Node in ${v.nodeLocation.countryName}`}
+                  />
+                )}
               </div>
 
               <div className="flex flex-col gap-[5px]">

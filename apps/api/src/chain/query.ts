@@ -10,6 +10,7 @@ import {
   ValidatorsResponse,
   BlockResultsResponse,
 } from '@cosmjs/tendermint-rpc'
+import { lookup } from 'node:dns/promises'
 import { env } from '../config/env'
 import { withTimeout } from './withTimeout'
 import { withChainTimeout } from './connectionHealth'
@@ -194,6 +195,66 @@ export async function getFinalizeBlockEvents(
     return data.result?.finalize_block_events ?? []
   } catch {
     return []
+  }
+}
+
+export interface NodeAddress {
+  moniker: string
+  ip: string
+}
+
+// The RPC node's direct p2p peers. node_info.moniker is the peer node's own
+// config.toml moniker, not a validator moniker — they happen to match for
+// every validator on this chain, which is what nodeLocationRefresh relies on.
+// Best-effort, same raw-fetch pattern as getNetworkStatus's net_info call.
+export async function getNetInfoPeers(): Promise<NodeAddress[]> {
+  try {
+    const response = await withTimeout(
+      fetch(env.RPC_ADDRESS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'netinfo-peers',
+          method: 'net_info',
+          params: {},
+        }),
+      }),
+      'net_info(peers)'
+    )
+    const data = (await response.json()) as {
+      result?: {
+        peers?: { node_info?: { moniker?: string }; remote_ip?: string }[]
+      }
+    }
+    return (data.result?.peers ?? [])
+      .map((peer) => ({
+        moniker: peer.node_info?.moniker ?? '',
+        ip: peer.remote_ip ?? '',
+      }))
+      .filter((peer) => peer.moniker && peer.ip)
+  } catch {
+    return []
+  }
+}
+
+// The RPC node never appears in its own peer list, so its address is taken
+// from RPC_ADDRESS's hostname instead — correct only while that hostname
+// points at the node itself rather than a separate proxy. null on failure.
+export async function getRpcSelfNode(
+  tmClient: Tendermint37Client
+): Promise<NodeAddress | null> {
+  try {
+    const status = await withChainTimeout(tmClient.status(), 'status')
+    const { address } = await withTimeout(
+      lookup(new URL(env.RPC_ADDRESS).hostname, { family: 4 }),
+      'rpc host dns'
+    )
+    return status.nodeInfo.moniker
+      ? { moniker: status.nodeInfo.moniker, ip: address }
+      : null
+  } catch {
+    return null
   }
 }
 
