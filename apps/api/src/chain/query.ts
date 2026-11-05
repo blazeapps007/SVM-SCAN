@@ -10,7 +10,6 @@ import {
   ValidatorsResponse,
   BlockResultsResponse,
 } from '@cosmjs/tendermint-rpc'
-import { lookup } from 'node:dns/promises'
 import { env } from '../config/env'
 import { withTimeout } from './withTimeout'
 import { withChainTimeout } from './connectionHealth'
@@ -238,21 +237,20 @@ export async function getNetInfoPeers(): Promise<NodeAddress[]> {
   }
 }
 
-// The RPC node never appears in its own peer list, so its address is taken
-// from RPC_ADDRESS's hostname instead — correct only while that hostname
-// points at the node itself rather than a separate proxy. null on failure.
+// The RPC node never appears in its own peer list, so its address comes from
+// the p2p listen address it reports, e.g. "57.131.13.43:26656". Not from
+// RPC_ADDRESS's hostname: behind a proxy like Cloudflare that resolves to the
+// proxy, giving a wrong country. An unroutable "tcp://0.0.0.0:26656" just
+// fails lookupCountry's public-IP check, leaving the node unlocated.
 export async function getRpcSelfNode(
   tmClient: Tendermint37Client
 ): Promise<NodeAddress | null> {
   try {
-    const status = await withChainTimeout(tmClient.status(), 'status')
-    const { address } = await withTimeout(
-      lookup(new URL(env.RPC_ADDRESS).hostname, { family: 4 }),
-      'rpc host dns'
-    )
-    return status.nodeInfo.moniker
-      ? { moniker: status.nodeInfo.moniker, ip: address }
-      : null
+    const { moniker, listenAddr } = (
+      await withChainTimeout(tmClient.status(), 'status')
+    ).nodeInfo
+    const url = listenAddr.includes('://') ? listenAddr : `tcp://${listenAddr}`
+    return moniker ? { moniker, ip: new URL(url).hostname } : null
   } catch {
     return null
   }
