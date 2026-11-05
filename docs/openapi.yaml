@@ -862,14 +862,15 @@ paths:
       summary: Chain-wide lifetime economic totals
       description: |
         Powers the Parameters page's "Tokenomics" section. Mostly lifetime aggregates computed
-        from indexed collections (`transactions`, `bridgeWithdrawals`, `rewardClaims`, `blocks`)
-        rather than a live chain query — the two exceptions are `totalStaked` (a live snapshot of
-        currently bonded tokens, not cumulative) and `communityPool` (a live ABCI query, `null` if
-        it fails). `totalBurned` sums each block's `burned` field (the chain's STEEMBLACKHOLE
-        EndBlock burn-sweep event, its sole burn point) — this covers bridge-out principal *and*
-        the 25% tx-fee-split burn in one figure, but undercounts until every historical block has
-        been re-indexed with that field populated. Cached server-side for 60s given the several
-        full-collection aggregations involved.
+        from indexed collections (`transactions`, `rewardClaims`, `blocks`) rather than a live
+        chain query — the two exceptions are `totalStaked` (a live snapshot of currently bonded
+        tokens, not cumulative) and `communityPool` (a live ABCI query, `null` if it fails).
+        `totalBurned` and `totalBridgeFees` sum per-block fields read from each block's non-tx
+        events: the STEEMBLACKHOLE burn (bridge-out principal plus the 25% tx-fee-split burn) and
+        the sweep of `bridge_reward` (the bridge fee on deposits and withdrawals). Both undercount
+        until every historical block has been re-indexed with those fields populated. `totalBurned`
+        equals `communityPool` until the first bridge-out, since both receive the same 25% of tx
+        fees. Cached server-side for 60s given the several full-collection aggregations involved.
       responses:
         '200':
           description: OK
@@ -878,12 +879,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenomicsResponse'
               example:
-                totalTxFees: [{ denom: asteem, amount: '86452000000000' }]
-                totalBridgeFees: [{ asset: BRIDGE_ASSET_STEEM, amountMillisteem: '250' }]
-                totalRewardsDistributed: []
-                totalStaked: [{ denom: asteem, amount: '104792000000000000000000' }]
-                totalBurned: [{ denom: asteem, amount: '10000' }]
-                communityPool: [{ denom: asteem, amount: '1200000000000000000000.000000000000000000' }]
+                totalTxFees: [{ denom: asteem, amount: '2285367000000000' }]
+                totalBridgeFees: [{ denom: asteem, amount: '35270000000000000000' }]
+                totalRewardsDistributed: [{ denom: asteem, amount: '15405867815625000000' }]
+                totalStaked: [{ denom: asteem, amount: '14373600000000000000000' }]
+                totalBurned: [{ denom: asteem, amount: '721341750000000' }]
+                communityPool: [{ denom: asteem, amount: '721341750000000.000105080000000000' }]
 
   /oracle/exchange-rates:
     get:
@@ -2129,11 +2130,11 @@ components:
         totalTxFees:
           type: array
           items: { $ref: '#/components/schemas/Coin' }
-          description: Lifetime sum of every indexed transaction's fee, grouped by denom.
+          description: Lifetime sum of fees actually paid by indexed transactions, grouped by denom. Excludes fees a transaction declared but the chain waived, and genesis transactions.
         totalBridgeFees:
           type: array
-          items: { $ref: '#/components/schemas/BridgeAssetTotal' }
-          description: Lifetime sum of the protocol fee withheld on every bridge-out, grouped by asset.
+          items: { $ref: '#/components/schemas/Coin' }
+          description: Lifetime sum of the bridge fee on every deposit and withdrawal, grouped by denom — measured from what left the `bridge_reward` module account, which pays it out in full to stakers.
         totalRewardsDistributed:
           type: array
           items: { $ref: '#/components/schemas/Coin' }

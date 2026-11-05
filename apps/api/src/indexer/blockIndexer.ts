@@ -18,6 +18,7 @@ import { extractIBCTransfer } from './ibcTransfer'
 import { indexLiquidityPoolsForTx } from './liquidityPools'
 import { indexRewardClaimsForTx } from './rewardClaims'
 import { extractBurnedCoins } from './burnEvents'
+import { extractBridgeFees, extractPaidFee } from './feeEvents'
 
 interface TxEventLike {
   type: string
@@ -72,15 +73,10 @@ export async function indexBlock(
 
     let messages: DecodeMsg[] = []
     let memo = ''
-    let fee: { denom: string; amount: string }[] = []
     try {
       const decodedTx = Tx.decode(rawTx)
       memo = decodedTx.body?.memo ?? ''
-      fee = (decodedTx.authInfo?.fee?.amount ?? []).map((coin) => ({
-        denom: coin.denom,
-        amount: coin.amount,
-      }))
-      messages = (decodedTx.body?.messages ?? []).map((msg) =>
+      messages =(decodedTx.body?.messages ?? []).map((msg) =>
         decodeMsg(msg.typeUrl, msg.value)
       )
     } catch (err) {
@@ -114,11 +110,10 @@ export async function indexBlock(
       log: result?.log ?? '',
       gasWanted: (result?.gasWanted ?? 0n).toString(),
       gasUsed: (result?.gasUsed ?? 0n).toString(),
-      // A MsgEthereumTx's real gas cost never appears in the Cosmos-level
-      // fee (see EvmTxEnrichment's doc comment) — fall back to the
-      // EVM-side computed fee only when the Cosmos-level one is empty, so
-      // an ordinary (non-EVM) tx's fee is untouched.
-      fee: fee.length > 0 ? fee : evmEnrichment.fee,
+      // What was actually paid, not auth_info.fee: a MsgEthereumTx leaves that
+      // empty (see EvmTxEnrichment's doc comment), and bridge messages like
+      // MsgConfirmName declare a fee the chain then waives.
+      fee: evmEnrichment.fee.length > 0 ? evmEnrichment.fee : extractPaidFee(events),
       memo,
       messages,
       messageTypes: messages.map((m) => m.typeUrl),
@@ -138,11 +133,11 @@ export async function indexBlock(
   // finalizeBlockEvents carries the real data (see getFinalizeBlockEvents'
   // doc comment), but keeping both is harmless — an older Tendermint 0.37
   // node would populate the former and return [] from the latter, never both.
-  const burned = extractBurnedCoins([
+  const nonTxEvents = [
     ...decodeEvents(blockResults.beginBlockEvents),
     ...decodeEvents(blockResults.endBlockEvents),
     ...finalizeBlockEvents,
-  ])
+  ]
 
   const blockDoc: BlockDoc = {
     height,
@@ -152,7 +147,8 @@ export async function indexBlock(
     appHash: toHex(block.header.appHash).toUpperCase(),
     txCount: rawTxs.length,
     txHashes,
-    burned,
+    burned: extractBurnedCoins(nonTxEvents),
+    bridgeFees: extractBridgeFees(nonTxEvents),
   }
 
   await db

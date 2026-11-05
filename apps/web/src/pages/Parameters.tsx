@@ -10,13 +10,12 @@ import {
   FiTrendingUp,
 } from 'react-icons/fi'
 import { useTheme } from '@/theme/ThemeProvider'
-import type { BridgeAssetTotal, ChainParamsResponse, Coin } from '@dexplorer/shared'
+import type { ChainParamsResponse, Coin } from '@dexplorer/shared'
 import { getConvertedAmount, formatAmount } from '@dexplorer/shared'
 import { apiClient } from '@/lib/apiClient'
 import { useOracleExchangeRates } from '@/hooks/useOracleData'
 import { useTokenomics } from '@/hooks/useTokenomics'
 import {
-  bridgeAssetSymbol,
   displayDurationSeconds,
   convertRateToPercent,
   convertRawAmount,
@@ -110,11 +109,8 @@ const formatAsteem = (rawAmount: string | undefined): string => {
   return rawAmount === '0' ? 'No limit' : `${convertRawAmount(rawAmount, 18)} STEEM`
 }
 
-// tokenomics Coin[] fields (tx fees, rewards distributed, staked, community
-// pool) are always atto-denominated, unlike the millisteem-denominated
-// bridge asset totals below — multiple denoms would be unusual in practice
-// but are joined rather than dropped in case a second bond/reward denom
-// ever appears.
+// tokenomics Coin[] fields are always atto-denominated. Bridge fees and burns
+// can legitimately span asteem and asbd, so denoms are joined, not dropped.
 const formatCoinList = (coins: Coin[] | null | undefined): string => {
   if (!coins || coins.length === 0) return '0'
   return coins
@@ -122,20 +118,6 @@ const formatCoinList = (coins: Coin[] | null | undefined): string => {
       const converted = getConvertedAmount(coin.amount, coin.denom)
       return `${formatAmount(converted.converted)} ${converted.base.toUpperCase()}`
     })
-    .join(', ')
-}
-
-// Same millisteem/3-decimal convention the Bridge Deposits/Withdrawals pages
-// already use for BridgeAssetTotal — see bridgeAssetSymbol's doc comment.
-const formatBridgeAssetTotalList = (
-  totals: BridgeAssetTotal[] | null | undefined
-): string => {
-  if (!totals || totals.length === 0) return '0'
-  return totals
-    .map(
-      (total) =>
-        `${convertRawAmount(total.amountMillisteem, 3)} ${bridgeAssetSymbol(total.asset)}`
-    )
     .join(', ')
 }
 
@@ -324,21 +306,20 @@ const Parameters: React.FC = () => {
                 {
                   label: 'Total Tx Fees',
                   value: formatCoinList(tokenomics?.totalTxFees),
-                  tooltip: 'Lifetime sum of every indexed transaction fee',
+                  tooltip:
+                    'Lifetime fees actually paid by transactions. Waived fees and genesis transactions are not included.',
                 },
                 {
                   label: 'Total Bridge Fees',
-                  value: formatBridgeAssetTotalList(
-                    tokenomics?.totalBridgeFees
-                  ),
+                  value: formatCoinList(tokenomics?.totalBridgeFees),
                   tooltip:
-                    'Lifetime protocol fee withheld on every bridge-out',
+                    'Lifetime fee charged on every bridge deposit and withdrawal, paid out to stakers',
                 },
                 {
-                  label: 'Rewards Distributed',
+                  label: 'Rewards Claimed',
                   value: formatCoinList(tokenomics?.totalRewardsDistributed),
                   tooltip:
-                    'Lifetime sum of every delegator reward + validator commission claim, chain-wide',
+                    'Lifetime staking rewards and validator commission withdrawn. Rewards earned but not yet withdrawn are not included.',
                 },
                 {
                   label: 'Total Staked',
@@ -350,14 +331,15 @@ const Parameters: React.FC = () => {
                   label: 'Total Burned',
                   value: formatCoinList(tokenomics?.totalBurned),
                   tooltip:
-                    'Lifetime coins destroyed via STEEMBLACKHOLE — bridge-out principal plus the 25% tx-fee-split burn',
+                    'Lifetime coins destroyed: 25% of every tx fee, plus bridge withdrawals. Matches the community pool until the first withdrawal, since both get the same 25%.',
                 },
                 {
                   label: 'Community Pool',
                   value: tokenomics?.communityPool
                     ? formatCoinList(tokenomics.communityPool)
                     : 'Unavailable',
-                  tooltip: 'Current community pool balance',
+                  tooltip:
+                    'Current community pool balance, funded by 25% of every tx fee',
                 },
               ].map((stat) => (
                 <div

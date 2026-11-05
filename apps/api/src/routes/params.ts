@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify'
 import type {
-  BridgeAssetTotal,
   BridgeParams,
   ChainParamsResponse,
   Coin,
@@ -19,10 +18,6 @@ import {
   TransactionDoc,
 } from '../db/schemas/transaction.schema'
 import {
-  BRIDGE_WITHDRAWALS_COLLECTION,
-  BridgeWithdrawalDoc,
-} from '../db/schemas/bridgeWithdrawal.schema'
-import {
   REWARD_CLAIMS_COLLECTION,
   RewardClaimDoc,
 } from '../db/schemas/rewardClaim.schema'
@@ -36,8 +31,8 @@ import { TtlCache } from '../utils/ttlCache'
 
 // $unwind + $group + $toDecimal (avoids float precision loss summing these
 // big string-encoded atto amounts) over a { denom, amount } array field —
-// the same shape used for tx fees, reward-claim amounts, and bridge
-// withdrawal principal, so one pipeline builder covers all three.
+// the same shape used for tx fees, reward claims, burns and bridge fees, so
+// one pipeline builder covers them all.
 function sumCoinArrayField(arrayField: string) {
   return [
     { $unwind: `$${arrayField}` },
@@ -66,21 +61,13 @@ async function getTotalRewardsDistributed(db: Db): Promise<Coin[]> {
     .toArray()
 }
 
-async function getTotalBridgeFees(db: Db): Promise<BridgeAssetTotal[]> {
+// From each block's `bridgeFees` (see indexer/feeEvents.ts), not
+// bridgeWithdrawals.feeMillisteem: deposits pay the bridge fee too, and that
+// fee appears on no deposit record.
+async function getTotalBridgeFees(db: Db): Promise<Coin[]> {
   return db
-    .collection<BridgeWithdrawalDoc>(BRIDGE_WITHDRAWALS_COLLECTION)
-    .aggregate<BridgeAssetTotal>([
-      {
-        $group: {
-          _id: '$asset',
-          sum: { $sum: { $toDecimal: '$feeMillisteem' } },
-        },
-      },
-      {
-        $project: { _id: 0, asset: '$_id', amountMillisteem: { $toString: '$sum' } },
-      },
-      { $sort: { asset: 1 } },
-    ])
+    .collection<BlockDoc>(BLOCKS_COLLECTION)
+    .aggregate<Coin>(sumCoinArrayField('bridgeFees'))
     .toArray()
 }
 

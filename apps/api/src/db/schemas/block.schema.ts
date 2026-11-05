@@ -19,6 +19,9 @@ export const blockSchema = z.object({
   // "burn" event) — see indexer/burnEvents.ts. Optional: blocks indexed
   // before this field existed won't have it until re-indexed.
   burned: z.array(coinSchema).optional(),
+  // Bridge fees swept out of bridge_reward this block (BeginBlock transfer) —
+  // see indexer/feeEvents.ts. Same "optional until re-indexed" caveat.
+  bridgeFees: z.array(coinSchema).optional(),
 })
 
 export type BlockDoc = z.infer<typeof blockSchema>

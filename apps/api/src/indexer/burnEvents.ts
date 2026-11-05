@@ -9,7 +9,7 @@ export interface BurnedCoin {
 // (rare, multi-denom) "1000uatom,500asteem" — same shape as
 // indexer/rewardClaims.ts's parseCoinsString, duplicated locally since each
 // caller only needs this one small regex, not a shared utility.
-function parseCoinsString(value: string): BurnedCoin[] {
+export function parseCoinsString(value: string): BurnedCoin[] {
   if (!value) return []
   return value
     .split(',')

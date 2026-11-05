@@ -499,13 +499,14 @@ export interface ChainParamsResponse {
 }
 
 export interface TokenomicsResponse {
-  // Lifetime sum of every indexed transaction's fee, grouped by denom —
-  // computed from `transactions`, not a live query.
+  // Lifetime sum of fees actually paid by indexed transactions, grouped by
+  // denom. Excludes fees a tx declared but the chain waived, and genesis
+  // transactions (which are in no block).
   totalTxFees: Coin[]
-  // Lifetime sum of the protocol fee withheld on every bridge-out
-  // (BridgeWithdrawal.feeMillisteem, sent to the bridge_reward module
-  // account), grouped by asset.
-  totalBridgeFees: BridgeAssetTotal[]
+  // Lifetime sum of the bridge fee on every deposit and withdrawal, grouped by
+  // denom — measured from what left the bridge_reward module account, which
+  // pays it out in full to stakers.
+  totalBridgeFees: Coin[]
   // Lifetime sum of every reward claim (delegator rewards + validator
   // commission) ever indexed, chain-wide across all validators combined —
   // the same `rewardClaims` aggregation as a validator's own
